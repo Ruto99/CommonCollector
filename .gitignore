@@ -1,0 +1,9 @@
+﻿bin/
+obj/
+.vs/
+*.user
+Workspace.xml
+Workspace.xml.bak
+settings.xml
+logs/
+*.broken-*
