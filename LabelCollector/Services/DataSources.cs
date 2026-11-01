@@ -58,7 +58,9 @@ public class ExcelDataSource(string folder, string keyColumn) : IDataSource
             .EnumerateFiles(folder, "*.*", SearchOption.AllDirectories)
             .Where(f => Extensions.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase))
             .Where(f => !Path.GetFileName(f).StartsWith("~$")) // エクセルで開いている間にできる一時ファイル
-            .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
+            // 指定フォルダ直下のファイルを先に、サブフォルダのファイルを後に読む
+            .OrderBy(f => Path.GetRelativePath(folder, f).Count(c => c is '\\' or '/'))
+            .ThenBy(f => f, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         var list = new List<SourceRecord>();

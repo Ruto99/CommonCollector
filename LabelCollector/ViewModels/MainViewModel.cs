@@ -25,12 +25,16 @@ public class MainViewModel : INotifyPropertyChanged
             _xmlPath = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(WindowTitle));
+            Explorer?.Reload(); // 開いている中間データの表示（太字・シート）を切り替える
         }
     }
 
     public string WindowTitle => $"LabelCollector - {Path.GetFileName(XmlPath)}";
 
-    /// <summary>登録済みのシート（左のフォルダ一覧）</summary>
+    /// <summary>左のフォルダエクスプローラー</summary>
+    public ExplorerViewModel Explorer { get; }
+
+    /// <summary>登録済みのシート（エクスプローラーで、開いている中間データの下に並ぶ）</summary>
     public ObservableCollection<SheetViewModel> Sheets { get; } = new();
 
     /// <summary>タブで開いているシート（AvalonDock のドキュメント）</summary>
@@ -40,7 +44,13 @@ public class MainViewModel : INotifyPropertyChanged
     public SheetViewModel? SelectedSheet
     {
         get => _selectedSheet;
-        set { _selectedSheet = value; OnPropertyChanged(); }
+        set
+        {
+            if (ReferenceEquals(_selectedSheet, value)) return;
+            _selectedSheet = value;
+            if (value != null) value.IsSelected = true; // エクスプローラーでも選択状態にする
+            OnPropertyChanged();
+        }
     }
 
     private string _status = "";
@@ -56,6 +66,7 @@ public class MainViewModel : INotifyPropertyChanged
     public ICommand OpenXmlCommand { get; }
     public ICommand ExportSheetCommand { get; }
     public ICommand ImportSheetsCommand { get; }
+    public ICommand ChangeWorkDirectoryCommand { get; }
 
     private const string XmlFilter = "XMLファイル (*.xml)|*.xml|すべてのファイル (*.*)|*.*";
 
@@ -75,8 +86,15 @@ public class MainViewModel : INotifyPropertyChanged
         RemoveSheetCommand = new RelayCommand(RemoveSheet);
         RefreshAllCommand = new RelayCommand(RefreshAll);
         SaveCommand = new RelayCommand(() => Save(manual: true));
+        ChangeWorkDirectoryCommand = new RelayCommand(ChangeWorkDirectory);
         Log.Info("LabelCollector を起動しました");
         Load();
+
+        // 作業フォルダ：未設定なら、開いている中間データのフォルダ
+        var workDir = Directory.Exists(_settings.WorkDirectory)
+            ? _settings.WorkDirectory
+            : Path.GetDirectoryName(Path.GetFullPath(XmlPath)) ?? AppContext.BaseDirectory;
+        Explorer = new ExplorerViewModel(this, workDir);
     }
 
     private void Load()
@@ -137,16 +155,23 @@ public class MainViewModel : INotifyPropertyChanged
     {
         var dlg = new OpenFileDialog { Title = "中間データ（XML）を開く", Filter = XmlFilter, CheckFileExists = true };
         if (dlg.ShowDialog() != true) return;
+        OpenXmlFile(dlg.FileName);
+    }
+
+    /// <summary>指定したXMLを開いて、現在の内容と入れ替える</summary>
+    public void OpenXmlFile(string path)
+    {
+        if (Explorer.IsCurrentXml(path)) return; // もう開いている
 
         TableData data;
         try
         {
-            data = XmlStore.Load(dlg.FileName);
+            data = XmlStore.Load(path);
         }
         catch (Exception ex)
         {
             Status = "XMLの読み込みに失敗: " + ex.Message;
-            Log.Error($"{Status} ({dlg.FileName})");
+            Log.Error($"{Status} ({path})");
             return;
         }
 
@@ -156,11 +181,90 @@ public class MainViewModel : INotifyPropertyChanged
         SelectedSheet = null;
         foreach (var s in data.Sheets) Sheets.Add(new SheetViewModel(s, () => Save()));
 
-        XmlPath = dlg.FileName;
+        XmlPath = path;
         _settings.WorkspacePath = XmlPath;
         _settings.Save();
         Status = $"読み込み完了: {Sheets.Count} シート ({XmlPath})";
         Log.Info(Status);
+    }
+
+    /// <summary>フォルダに空の中間データ（XML）を作って開く</summary>
+    /// <returns>作ったファイルのパス。作れなかったら null</returns>
+    public string? CreateXml(string folder, string fileName)
+    {
+        fileName = fileName.Trim();
+        if (fileName.Length == 0) return null;
+        if (!fileName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)) fileName += ".xml";
+        if (fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+        {
+            MessageBox.Show($"ファイル名に使えない文字が入っています: {fileName}", "中間データの作成",
+                            MessageBoxButton.OK, MessageBoxImage.Warning);
+            return null;
+        }
+
+        var path = Path.Combine(folder, fileName);
+        if (File.Exists(path))
+        {
+            MessageBox.Show($"同じ名前のファイルがあります: {path}", "中間データの作成",
+                            MessageBoxButton.OK, MessageBoxImage.Warning);
+            return null;
+        }
+
+        try
+        {
+            XmlStore.Save(path, new TableData { UpdatedAt = DateTime.Now });
+            Log.Info($"中間データを作成しました: {path}");
+        }
+        catch (Exception ex)
+        {
+            Status = "中間データの作成に失敗: " + ex.Message;
+            Log.Error($"{Status} ({path})");
+            return null;
+        }
+
+        OpenXmlFile(path); // 作ったものを開く（開くとツリーも読み直される）
+        return path;
+    }
+
+    /// <summary>中間データ（XML）を削除する。開いているものは削除できない</summary>
+    public void DeleteXml(string path)
+    {
+        if (Explorer.IsCurrentXml(path))
+        {
+            MessageBox.Show("開いている中間データは削除できません。\n別の中間データを開いてから削除してください。",
+                            "中間データの削除", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var ok = MessageBox.Show($"「{Path.GetFileName(path)}」を削除します。よろしいですか？\n\n{path}",
+                                 "中間データの削除", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (ok != MessageBoxResult.Yes) return;
+
+        try
+        {
+            File.Delete(path);
+            Status = $"削除しました: {path}";
+            Log.Warn($"中間データを削除しました: {path}");
+        }
+        catch (Exception ex)
+        {
+            Status = "削除に失敗: " + ex.Message;
+            Log.Error($"{Status} ({path})");
+        }
+        Explorer.Reload();
+    }
+
+    /// <summary>エクスプローラーに表示する作業フォルダを変える</summary>
+    private void ChangeWorkDirectory()
+    {
+        var dlg = new OpenFolderDialog { Title = "作業フォルダを選択" };
+        if (Directory.Exists(Explorer.RootPath)) dlg.InitialDirectory = Explorer.RootPath;
+        if (dlg.ShowDialog() != true) return;
+
+        Explorer.RootPath = dlg.FolderName;
+        _settings.WorkDirectory = dlg.FolderName;
+        _settings.Save();
+        Log.Info($"作業フォルダを変更しました: {dlg.FolderName}");
     }
 
     /// <summary>選択中のシートの表を、単独のXMLファイルとして書き出す</summary>
@@ -169,7 +273,7 @@ public class MainViewModel : INotifyPropertyChanged
         var sheet = SelectedSheet;
         if (sheet == null)
         {
-            Status = "書き出すシートを左の一覧で選択してください";
+            Status = "書き出すシートを左のエクスプローラーで選択してください";
             Log.Warn(Status);
             return;
         }
@@ -325,11 +429,13 @@ public class MainViewModel : INotifyPropertyChanged
     {
         try
         {
+            var isNewFile = !File.Exists(XmlPath);
             XmlStore.Save(XmlPath, new TableData
             {
                 UpdatedAt = DateTime.Now,
                 Sheets = Sheets.Select(s => s.ToData()).ToList(),
             });
+            if (isNewFile) Explorer?.Reload(); // 新しくできたファイルをエクスプローラーに出す
             Status = $"保存しました ({DateTime.Now:HH:mm:ss})";
             if (manual) Log.Info($"保存しました: {XmlPath}");
         }

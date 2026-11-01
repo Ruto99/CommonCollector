@@ -79,6 +79,12 @@ public class SheetViewModel : INotifyPropertyChanged
         set { Data.FilePattern = value; OnPropertyChanged(); }
     }
 
+    // 左のエクスプローラー（ツリー）上の状態
+    private bool _isExpanded;
+    public bool IsExpanded { get => _isExpanded; set { _isExpanded = value; OnPropertyChanged(); } }
+    private bool _isSelected;
+    public bool IsSelected { get => _isSelected; set { _isSelected = value; OnPropertyChanged(); } }
+
     private string _status = "";
     public string Status { get => _status; set { _status = value; OnPropertyChanged(); } }
 

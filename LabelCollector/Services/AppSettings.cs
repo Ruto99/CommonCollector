@@ -4,13 +4,16 @@ using System.Xml.Serialization;
 
 namespace LabelCollector.Services;
 
-/// <summary>アプリの設定（最後に使った中間データXMLの場所）。exe と同じフォルダの settings.xml に保存</summary>
+/// <summary>アプリの設定（最後に使った中間データXMLの場所、作業フォルダ）。exe と同じフォルダの settings.xml に保存</summary>
 public class AppSettings
 {
     private static readonly string FilePath = Path.Combine(AppContext.BaseDirectory, "settings.xml");
     private static readonly XmlSerializer Serializer = new(typeof(AppSettings));
 
     public string WorkspacePath { get; set; } = "";
+
+    /// <summary>左のエクスプローラーに表示する作業フォルダ</summary>
+    public string WorkDirectory { get; set; } = "";
 
     public static AppSettings Load()
     {

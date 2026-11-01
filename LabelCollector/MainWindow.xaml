@@ -37,6 +37,7 @@
         <Menu DockPanel.Dock="Top" x:Name="MainMenu">
             <MenuItem Header="ファイル(_F)">
                 <MenuItem Header="XMLを開く(_O)..." Command="{Binding OpenXmlCommand}" InputGestureText="Ctrl+O"/>
+                <MenuItem Header="作業フォルダを変更(_W)..." Command="{Binding ChangeWorkDirectoryCommand}"/>
                 <Separator/>
                 <MenuItem Header="保存(_S)" Command="{Binding SaveCommand}" InputGestureText="Ctrl+S"/>
                 <MenuItem Header="名前を付けて保存(_A)..." Command="{Binding SaveAsCommand}" InputGestureText="Ctrl+Shift+S"/>
@@ -66,7 +67,7 @@
             </MenuItem>
 
             <MenuItem Header="表示(_V)" SubmenuOpened="ViewMenu_SubmenuOpened">
-                <MenuItem x:Name="MenuShowSheets" Header="フォルダ管理(_F)" Click="MenuShowSheets_Click"/>
+                <MenuItem x:Name="MenuShowSheets" Header="エクスプローラー(_F)" Click="MenuShowSheets_Click"/>
                 <MenuItem x:Name="MenuShowProperties" Header="プロパティ(_P)" Click="MenuShowProperties_Click"/>
                 <MenuItem x:Name="MenuShowLog" Header="ログ(_L)" Click="MenuShowLog_Click"/>
                 <MenuItem x:Name="MenuShowToolbar" Header="ツールバー(_T)" Click="MenuShowToolbar_Click"/>
@@ -91,7 +92,7 @@
                         ToolTip="保存先のXMLファイルを選んで、全シートを保存します"/>
                 <Separator/>
                 <Button Style="{StaticResource ToolButton}" Content="選択シートを書き出し" Command="{Binding ExportSheetCommand}"
-                        ToolTip="左の一覧で選んだシートの表を、単独のXMLファイルに書き出します"/>
+                        ToolTip="左のエクスプローラーで選んだシートの表を、単独のXMLファイルに書き出します"/>
                 <Button Style="{StaticResource ToolButton}" Content="XMLから追加" Command="{Binding ImportSheetsCommand}"
                         ToolTip="別のXMLファイルのシートを、現在の内容に追加します"/>
             </ToolBar>
@@ -144,22 +145,65 @@
             <ad:LayoutRoot>
                 <ad:LayoutPanel Orientation="Horizontal">
 
-                    <!-- 左：登録済みフォルダ／エクセルの一覧 -->
-                    <ad:LayoutAnchorablePane DockWidth="240">
-                        <ad:LayoutAnchorable x:Name="SheetsAnchorable" Title="フォルダ管理" ContentId="sheets" CanClose="False">
-                            <ListBox x:Name="SheetList" ItemsSource="{Binding Sheets}"
-                                     SelectedItem="{Binding SelectedSheet, Mode=TwoWay}"
-                                     MouseDoubleClick="SheetList_MouseDoubleClick"
-                                     BorderThickness="0">
-                                <ListBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Orientation="Horizontal" Margin="2">
-                                            <TextBlock Text="{Binding Icon}" Margin="0,0,6,0"/>
+                    <!-- 左：作業フォルダのエクスプローラー（フォルダ・中間データXML・シート） -->
+                    <ad:LayoutAnchorablePane DockWidth="260">
+                        <ad:LayoutAnchorable x:Name="SheetsAnchorable" Title="エクスプローラー" ContentId="sheets" CanClose="False">
+                            <TreeView x:Name="ExplorerTree" ItemsSource="{Binding Explorer.Roots}" BorderThickness="0"
+                                      SelectedItemChanged="ExplorerTree_SelectedItemChanged"
+                                      MouseDoubleClick="ExplorerTree_MouseDoubleClick"
+                                      PreviewMouseRightButtonDown="ExplorerTree_PreviewMouseRightButtonDown"
+                                      ContextMenuOpening="ExplorerTree_ContextMenuOpening">
+                                <TreeView.Resources>
+                                    <!-- フォルダ・中間データ -->
+                                    <HierarchicalDataTemplate DataType="{x:Type vm:ExplorerNode}" ItemsSource="{Binding Children}">
+                                        <StackPanel Orientation="Horizontal" Margin="1" ToolTip="{Binding FullPath}">
+                                            <TextBlock Text="{Binding Icon}" Margin="0,0,5,0"/>
+                                            <TextBlock Text="{Binding Name}">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsBold}" Value="True">
+                                                                <Setter Property="FontWeight" Value="Bold"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </HierarchicalDataTemplate>
+                                    <!-- 開いている中間データの中のシート -->
+                                    <DataTemplate DataType="{x:Type vm:SheetViewModel}">
+                                        <StackPanel Orientation="Horizontal" Margin="1">
+                                            <TextBlock Text="{Binding Icon}" Margin="0,0,5,0"/>
                                             <TextBlock Text="{Binding Name}"/>
                                         </StackPanel>
                                     </DataTemplate>
-                                </ListBox.ItemTemplate>
-                            </ListBox>
+                                    <DataTemplate DataType="{x:Type vm:LoadingNode}">
+                                        <TextBlock Text="{Binding Name}" Foreground="Gray"/>
+                                    </DataTemplate>
+                                </TreeView.Resources>
+                                <TreeView.ItemContainerStyle>
+                                    <Style TargetType="TreeViewItem">
+                                        <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay, FallbackValue=False}"/>
+                                        <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay, FallbackValue=False}"/>
+                                    </Style>
+                                </TreeView.ItemContainerStyle>
+                                <TreeView.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem x:Name="CtxOpenXml" Header="開く(_O)" Click="CtxOpenXml_Click"/>
+                                        <MenuItem x:Name="CtxCreateXml" Header="新しい中間データ(XML)を作成(_N)..." Click="CtxCreateXml_Click"/>
+                                        <MenuItem x:Name="CtxDeleteXml" Header="中間データを削除(_D)" Click="CtxDeleteXml_Click"/>
+                                        <MenuItem x:Name="CtxAddExcel" Header="エクセルを追加(_E)..." Command="{Binding AddExcelCommand}"/>
+                                        <MenuItem x:Name="CtxAddFolder" Header="フォルダを追加(_F)..." Command="{Binding AddFolderCommand}"/>
+                                        <MenuItem x:Name="CtxOpenSheet" Header="シートを開く(_O)" Command="{Binding OpenCommand}"/>
+                                        <MenuItem x:Name="CtxRemoveSheet" Header="シートを削除(_R)" Command="{Binding RemoveSheetCommand}"/>
+                                        <Separator/>
+                                        <MenuItem Header="エクスプローラーで開く(_X)" Click="CtxShowInExplorer_Click"/>
+                                        <MenuItem Header="最新の情報に更新(_U)" Click="CtxReload_Click"/>
+                                        <MenuItem Header="作業フォルダを変更(_W)..." Command="{Binding ChangeWorkDirectoryCommand}"/>
+                                    </ContextMenu>
+                                </TreeView.ContextMenu>
+                            </TreeView>
                         </ad:LayoutAnchorable>
                     </ad:LayoutAnchorablePane>
 
