@@ -47,7 +47,7 @@ public class MainViewModel : INotifyPropertyChanged
     public string Status { get => _status; set { _status = value; OnPropertyChanged(); } }
 
     public ICommand AddFolderCommand { get; }
-    public ICommand AddDbCommand { get; }
+    public ICommand AddExcelCommand { get; }
     public ICommand OpenCommand { get; }
     public ICommand RemoveSheetCommand { get; }
     public ICommand RefreshAllCommand { get; }
@@ -70,7 +70,7 @@ public class MainViewModel : INotifyPropertyChanged
             : Path.Combine(AppContext.BaseDirectory, "Workspace.xml");
 
         AddFolderCommand = new RelayCommand(AddFolder);
-        AddDbCommand = new RelayCommand(AddDb);
+        AddExcelCommand = new RelayCommand(AddExcel);
         OpenCommand = new RelayCommand(() => Open(SelectedSheet));
         RemoveSheetCommand = new RelayCommand(RemoveSheet);
         RefreshAllCommand = new RelayCommand(RefreshAll);
@@ -248,29 +248,27 @@ public class MainViewModel : INotifyPropertyChanged
         sheet.Refresh();
     }
 
-    private void AddDb()
+    /// <summary>エクセルのシートを追加する。フォルダを選んだら、キー列名「ID」で1件目の指定を作る</summary>
+    private void AddExcel()
     {
-        var dlg = new OpenFileDialog
-        {
-            Title = "SQLite データベースを選択",
-            Filter = "SQLite (*.db;*.sqlite;*.sqlite3)|*.db;*.sqlite;*.sqlite3|すべてのファイル (*.*)|*.*",
-        };
+        var dlg = new OpenFolderDialog { Title = "エクセルファイルが入っているフォルダを選択" };
         if (dlg.ShowDialog() != true) return;
 
-        // SQL はシートのタブ上で編集できる
-        Add(new SheetData
+        var name = Path.GetFileName(dlg.FolderName.TrimEnd('\\')) is { Length: > 0 } n ? n : dlg.FolderName;
+        var sheet = Add(new SheetData
         {
-            Name = UniqueName(Path.GetFileNameWithoutExtension(dlg.FileName)),
-            Type = SourceType.Sqlite,
-            DbPath = dlg.FileName,
+            Name = UniqueName(name),
+            Type = SourceType.Excel,
+            ExcelSources = { new ExcelSourceData { FolderPath = dlg.FolderName, KeyColumn = "ID" } },
         });
+        sheet.Refresh();
     }
 
     private SheetViewModel Add(SheetData data)
     {
         var sheet = new SheetViewModel(data, () => Save());
         Sheets.Add(sheet);
-        Log.Info($"シートを追加: {sheet.Name} ({(sheet.IsFolder ? data.FolderPath : data.DbPath)})");
+        Log.Info($"シートを追加: {sheet.Name} ({(sheet.IsFolder ? data.FolderPath : string.Join(", ", data.ExcelSources.Select(x => x.FolderPath)))})");
         SelectedSheet = sheet;
         Open(sheet);
         Save();

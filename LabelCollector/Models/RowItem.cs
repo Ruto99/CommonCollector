@@ -26,7 +26,7 @@ public class RowItem : INotifyPropertyChanged
     private RowState _state = RowState.New;
     private DateTime _lastSeen;
 
-    /// <summary>行を識別する一意キー（ファイルの相対パス、DBの主キーなど）</summary>
+    /// <summary>行を識別する一意キー（ファイルの相対パス、エクセルのキー列の値など）</summary>
     [XmlAttribute("key")]
     public string Key { get => _key; set => Set(ref _key, value); }
 

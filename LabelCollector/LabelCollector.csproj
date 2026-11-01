@@ -10,10 +10,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- ローカルDB（SQLite）読み込み用。Access や SQL Server を使う場合は差し替えてください -->
     <PackageReference Include="Dirkster.AvalonDock" Version="5.0.1" />
     <PackageReference Include="Dirkster.AvalonDock.Themes.VS2013" Version="5.0.1" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.0" />
+    <!-- エクセル（.xlsx / .xlsm / .xls）読み込み用 -->
+    <PackageReference Include="ExcelDataReader" Version="3.7.0" />
   </ItemGroup>
 
 </Project>

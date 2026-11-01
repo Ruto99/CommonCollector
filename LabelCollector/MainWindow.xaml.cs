@@ -21,6 +21,7 @@ public partial class MainWindow : Window
 
         // LayoutAnchorable の中身は DataContext を引き継がないので明示的に渡す
         SheetList.DataContext = _vm;
+        PropertyView.DataContext = _vm;
         LogGrid.ItemsSource = AppLogger.Instance.Entries;
 
         // 新しいログが出たら最下行まで自動スクロール
@@ -30,6 +31,12 @@ public partial class MainWindow : Window
         LogAnchorable.IsVisibleChanged += (_, _) => LogToggle.IsChecked = LogAnchorable.IsVisible;
 
         _vm.ActivateRequested += Activate;
+
+        // タブを切り替えたら、そのシートをプロパティに表示する
+        Dock.ActiveContentChanged += (_, _) =>
+        {
+            if (Dock.ActiveContent is SheetViewModel sheet) _vm.SelectedSheet = sheet;
+        };
     }
 
     private void LogEntries_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -53,6 +60,7 @@ public partial class MainWindow : Window
     {
         if (!ReferenceEquals(e.OriginalSource, sender)) return;
         MenuShowSheets.IsChecked = SheetsAnchorable.IsVisible;
+        MenuShowProperties.IsChecked = PropertiesAnchorable.IsVisible;
         MenuShowLog.IsChecked = LogAnchorable.IsVisible;
         MenuShowToolbar.IsChecked = MainToolBarTray.Visibility == Visibility.Visible;
     }
@@ -60,6 +68,11 @@ public partial class MainWindow : Window
     private void MenuShowSheets_Click(object sender, RoutedEventArgs e)
     {
         if (SheetsAnchorable.IsVisible) SheetsAnchorable.Hide(); else SheetsAnchorable.Show();
+    }
+
+    private void MenuShowProperties_Click(object sender, RoutedEventArgs e)
+    {
+        if (PropertiesAnchorable.IsVisible) PropertiesAnchorable.Hide(); else PropertiesAnchorable.Show();
     }
 
     private void MenuShowLog_Click(object sender, RoutedEventArgs e)
@@ -78,7 +91,7 @@ public partial class MainWindow : Window
         var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
         MessageBox.Show(this,
             $"LabelCollector  Version {version?.ToString(3)}\n\n" +
-            "フォルダやローカルDBのデータを集めて表にまとめ、手入力の列を行に結びつけて管理します。\n\n" +
+            "フォルダやエクセルのデータを集めて表にまとめ、手入力の列を行に結びつけて管理します。\n\n" +
             $"中間データ: {_vm.XmlPath}\nログ: {AppLogger.Instance.LogDirectory}",
             "バージョン情報", MessageBoxButton.OK, MessageBoxImage.Information);
     }

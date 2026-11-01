@@ -7,7 +7,7 @@ namespace LabelCollector.Models;
 public class TableData
 {
     [XmlAttribute("version")]
-    public int Version { get; set; } = 2;
+    public int Version { get; set; } = 3;
 
     public DateTime UpdatedAt { get; set; }
 
@@ -18,28 +18,56 @@ public class TableData
 
 public enum SourceType
 {
+    /// <summary>フォルダ内のファイル一覧</summary>
     Folder,
-    Sqlite,
+    /// <summary>フォルダ内のエクセルファイルの行</summary>
+    Excel,
 }
 
-/// <summary>1つのデータ元（フォルダまたはDB）と、その表の内容</summary>
+/// <summary>1つのデータ元（フォルダまたはエクセル）と、その表の内容</summary>
 public class SheetData
 {
     [XmlAttribute("name")]
     public string Name { get; set; } = "";
 
+    /// <summary>
+    /// 種類。古いXMLに残っている未対応の種類（Sqlite など）でも読み込みに失敗しないよう、文字列で保存する
+    /// </summary>
     [XmlAttribute("type")]
-    public SourceType Type { get; set; } = SourceType.Folder;
+    public string TypeText { get; set; } = nameof(SourceType.Folder);
+
+    [XmlIgnore]
+    public SourceType Type
+    {
+        get => Enum.TryParse<SourceType>(TypeText, out var t) ? t : SourceType.Folder;
+        set => TypeText = value.ToString();
+    }
+
+    /// <summary>XMLの種類が未対応のもの（旧バージョンのDBシートなど）か</summary>
+    [XmlIgnore]
+    public bool IsUnknownType => !Enum.TryParse<SourceType>(TypeText, out _);
 
     public string FolderPath { get; set; } = "";
     public string FilePattern { get; set; } = "*.*";
-    public string DbPath { get; set; } = "";
-    /// <summary>1列目をキー、2列目をA列として読む SQL</summary>
-    public string DbQuery { get; set; } = "SELECT id, name FROM items ORDER BY id";
+
+    /// <summary>エクセルの読み込み設定（プロパティウィンドウで追加する）</summary>
+    [XmlArray("ExcelSources")]
+    [XmlArrayItem("ExcelSource")]
+    public List<ExcelSourceData> ExcelSources { get; set; } = new();
 
     [XmlArray("Rows")]
     [XmlArrayItem("Row")]
     public List<RowItem> Rows { get; set; } = new();
+}
+
+/// <summary>エクセルの読み込み設定 1件分：どのフォルダの、どの列をキーにするか</summary>
+public class ExcelSourceData
+{
+    /// <summary>エクセルファイルが入っているフォルダ</summary>
+    public string FolderPath { get; set; } = "";
+
+    /// <summary>キーにする列の名前（見出し行の文字）</summary>
+    public string KeyColumn { get; set; } = "ID";
 }
 
 /// <summary>データ元から取ってきた1件分</summary>

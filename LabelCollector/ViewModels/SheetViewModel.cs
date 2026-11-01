@@ -7,7 +7,7 @@ using LabelCollector.Services;
 
 namespace LabelCollector.ViewModels;
 
-/// <summary>1つのシート（フォルダ or DB 1件分の表）</summary>
+/// <summary>1つのシート（フォルダ or エクセル 1件分の表）</summary>
 public class SheetViewModel : INotifyPropertyChanged
 {
     private readonly Action _requestSave;
@@ -15,17 +15,45 @@ public class SheetViewModel : INotifyPropertyChanged
     public SheetData Data { get; }
     public ObservableCollection<RowItem> Rows { get; } = new();
 
+    /// <summary>エクセルの読み込み設定（フォルダ＋キー列名）。プロパティウィンドウで追加・削除する</summary>
+    public ObservableCollection<ExcelSourceViewModel> ExcelSources { get; } = new();
+
     public ICommand RefreshCommand { get; }
     public ICommand RemoveMissingCommand { get; }
+    public ICommand AddExcelSourceCommand { get; }
 
     public SheetViewModel(SheetData data, Action requestSave)
     {
         Data = data;
         _requestSave = requestSave;
         foreach (var r in data.Rows) Rows.Add(r);
+        foreach (var x in data.ExcelSources) ExcelSources.Add(CreateSource(x));
+
+        if (data.IsUnknownType)
+            AppLogger.Instance.Warn($"[{data.Name}] 未対応の種類「{data.TypeText}」のシートです。フォルダのシートとして扱います（B列の内容は残ります）");
 
         RefreshCommand = new RelayCommand(Refresh);
         RemoveMissingCommand = new RelayCommand(RemoveMissing);
+        AddExcelSourceCommand = new RelayCommand(() => AddExcelSource());
+    }
+
+    private ExcelSourceViewModel CreateSource(ExcelSourceData data) =>
+        new(data, RemoveExcelSource, _requestSave);
+
+    /// <summary>エクセルの読み込み設定を1件追加する</summary>
+    public ExcelSourceViewModel AddExcelSource(string folderPath = "", string keyColumn = "ID")
+    {
+        var src = CreateSource(new ExcelSourceData { FolderPath = folderPath, KeyColumn = keyColumn });
+        ExcelSources.Add(src);
+        _requestSave();
+        return src;
+    }
+
+    private void RemoveExcelSource(ExcelSourceViewModel src)
+    {
+        ExcelSources.Remove(src);
+        AppLogger.Instance.Info($"[{Name}] エクセルの指定を削除: {src.FolderPath} (キー列: {src.KeyColumn})");
+        _requestSave();
     }
 
     public string Name
@@ -35,8 +63,9 @@ public class SheetViewModel : INotifyPropertyChanged
     }
 
     public bool IsFolder => Data.Type == SourceType.Folder;
-    public bool IsDb => Data.Type == SourceType.Sqlite;
-    public string Icon => IsFolder ? "📁" : "🗄";
+    public bool IsExcel => Data.Type == SourceType.Excel;
+    public string Icon => IsFolder ? "📁" : "📊";
+    public string TypeName => IsFolder ? "フォルダ（ファイル一覧）" : "エクセル";
 
     public string FolderPath
     {
@@ -50,18 +79,6 @@ public class SheetViewModel : INotifyPropertyChanged
         set { Data.FilePattern = value; OnPropertyChanged(); }
     }
 
-    public string DbPath
-    {
-        get => Data.DbPath;
-        set { Data.DbPath = value; OnPropertyChanged(); }
-    }
-
-    public string DbQuery
-    {
-        get => Data.DbQuery;
-        set { Data.DbQuery = value; OnPropertyChanged(); }
-    }
-
     private string _status = "";
     public string Status { get => _status; set { _status = value; OnPropertyChanged(); } }
 
@@ -69,6 +86,7 @@ public class SheetViewModel : INotifyPropertyChanged
     public SheetData ToData()
     {
         Data.Rows = Rows.ToList();
+        Data.ExcelSources = ExcelSources.Select(x => x.Data).ToList();
         return Data;
     }
 
@@ -81,14 +99,7 @@ public class SheetViewModel : INotifyPropertyChanged
         var log = AppLogger.Instance;
         try
         {
-            var target = IsFolder ? Data.FolderPath : Data.DbPath;
-            log.Info($"[{Name}] 更新開始: {target}");
-
-            IDataSource source = IsFolder
-                ? new FolderDataSource(Data.FolderPath, Data.FilePattern)
-                : new SqliteDataSource(Data.DbPath, Data.DbQuery);
-
-            var records = source.Fetch();
+            var records = IsFolder ? FetchFolder() : FetchExcel();
             var alreadyMissing = Rows.Where(r => r.State == RowState.Missing).Select(r => r.Key).ToHashSet();
 
             var result = RowMerger.Merge(Rows, records, DateTime.Now);
@@ -109,6 +120,34 @@ public class SheetViewModel : INotifyPropertyChanged
             Status = "更新に失敗: " + ex.Message;
             log.Error($"[{Name}] 更新に失敗: {ex.Message}");
         }
+    }
+
+    private List<SourceRecord> FetchFolder()
+    {
+        AppLogger.Instance.Info($"[{Name}] 更新開始: {Data.FolderPath}");
+        return new FolderDataSource(Data.FolderPath, Data.FilePattern).Fetch();
+    }
+
+    /// <summary>エクセルの指定をすべて読んで1つの表にまとめる（同じキーは先に見つかったほうを使う）</summary>
+    private List<SourceRecord> FetchExcel()
+    {
+        if (ExcelSources.Count == 0)
+            throw new InvalidOperationException("エクセルの指定がありません。右のプロパティウィンドウの「＋ 追加」で指定してください");
+
+        var all = new List<SourceRecord>();
+        foreach (var src in ExcelSources)
+        {
+            AppLogger.Instance.Info($"[{Name}] 更新開始: {src.FolderPath} (キー列: {src.KeyColumn})");
+            var records = new ExcelDataSource(src.FolderPath, src.KeyColumn).Fetch();
+            AppLogger.Instance.Info($"[{Name}]   {records.Count} 件読み込み");
+            all.AddRange(records);
+        }
+
+        var duplicates = all.GroupBy(r => r.Key, StringComparer.OrdinalIgnoreCase)
+                            .Where(g => g.Count() > 1)
+                            .Select(g => $"{g.Key} ({string.Join(", ", g.Select(r => r.ValueA))})");
+        LogDetails("キー重複（先のものを使用）", duplicates, LogLevel.Warn);
+        return all;
     }
 
     private void LogDetails(string label, IEnumerable<string> keys, LogLevel level)

@@ -18,10 +18,4 @@ public partial class SheetView : UserControl
         if (e.EditAction == DataGridEditAction.Commit && DataContext is SheetViewModel vm)
             Dispatcher.BeginInvoke(vm.RequestSave, DispatcherPriority.Background);
     }
-
-    // 名前・パス・SQL の入力が終わったら保存
-    private void Setting_LostFocus(object sender, RoutedEventArgs e)
-    {
-        if (DataContext is SheetViewModel vm) vm.RequestSave();
-    }
 }
