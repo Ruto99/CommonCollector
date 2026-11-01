@@ -37,7 +37,7 @@ public partial class MainWindow : Window
         // タブを切り替えたら、そのシートをプロパティに表示する
         Dock.ActiveContentChanged += (_, _) =>
         {
-            if (Dock.ActiveContent is SheetViewModel sheet) _vm.SelectedSheet = sheet;
+            if (Dock.ActiveContent is SheetViewModel sheet) _vm.ShowSheetProperties(sheet);
         };
     }
 
@@ -94,7 +94,7 @@ public partial class MainWindow : Window
         MessageBox.Show(this,
             $"LabelCollector  Version {version?.ToString(3)}\n\n" +
             "フォルダやエクセルのデータを集めて表にまとめ、手入力の列を行に結びつけて管理します。\n\n" +
-            $"中間データ: {_vm.XmlPath}\nログ: {AppLogger.Instance.LogDirectory}",
+            $"中間データ: {_vm.FilePath}\nログ: {AppLogger.Instance.LogDirectory}",
             "バージョン情報", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
@@ -129,11 +129,23 @@ public partial class MainWindow : Window
 
     private void ExplorerTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
-        // シートを選んだら、右のプロパティに表示する
-        if (e.NewValue is SheetViewModel sheet) _vm.SelectedSheet = sheet;
+        // 選んだものを右のプロパティに表示する（中間データならその中身、シートならその設定）
+        switch (e.NewValue)
+        {
+            case SheetViewModel sheet:
+                _vm.ShowSheetProperties(sheet);
+                break;
+            case DataFileNode file:
+                _vm.ShowFileProperties(file.FullPath);
+                break;
+            case FolderNode:
+                _vm.ClearProperties();
+                break;
+            // null（ツリーを読み直したときなど）は、表示をそのままにする
+        }
     }
 
-    // ダブルクリック：シートならタブで開く、中間データ(XML)なら開いて入れ替える
+    // ダブルクリック：シートならタブで開く、中間データ(.lc)なら開いて入れ替える
     private void ExplorerTree_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (ItemUnderMouse(e) is not { } item) return;
@@ -143,8 +155,8 @@ public partial class MainWindow : Window
                 _vm.OpenSheet(sheet);
                 e.Handled = true;
                 break;
-            case XmlFileNode xml when !xml.IsCurrent:
-                _vm.OpenXmlFile(xml.FullPath);
+            case DataFileNode xml when !xml.IsCurrent:
+                _vm.OpenDataFile(xml.FullPath);
                 e.Handled = true;
                 break;
         }
@@ -172,14 +184,14 @@ public partial class MainWindow : Window
     private void ExplorerTree_ContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
         var item = SelectedTreeItem;
-        var xml = item as XmlFileNode;
+        var xml = item as DataFileNode;
         var isFolder = item is FolderNode || item == null;
         var isSheet = item is SheetViewModel;
 
-        SetVisible(CtxOpenXml, xml is { IsCurrent: false });
-        SetVisible(CtxCreateXml, isFolder || xml != null);
-        SetVisible(CtxDeleteXml, xml != null);
-        CtxDeleteXml.IsEnabled = xml is { IsCurrent: false };
+        SetVisible(CtxOpenFile, xml is { IsCurrent: false });
+        SetVisible(CtxCreateFile, isFolder || xml != null);
+        SetVisible(CtxDeleteFile, xml != null);
+        CtxDeleteFile.IsEnabled = xml is { IsCurrent: false };
         SetVisible(CtxAddExcel, xml is { IsCurrent: true });
         SetVisible(CtxAddFolder, xml is { IsCurrent: true });
         SetVisible(CtxOpenSheet, isSheet);
@@ -196,22 +208,23 @@ public partial class MainWindow : Window
         _ => _vm.Explorer.RootPath,
     };
 
-    private void CtxOpenXml_Click(object sender, RoutedEventArgs e)
+    private void CtxOpenFile_Click(object sender, RoutedEventArgs e)
     {
-        if (SelectedTreeItem is XmlFileNode xml) _vm.OpenXmlFile(xml.FullPath);
+        if (SelectedTreeItem is DataFileNode xml) _vm.OpenDataFile(xml.FullPath);
     }
 
-    private void CtxCreateXml_Click(object sender, RoutedEventArgs e)
+    private void CtxCreateFile_Click(object sender, RoutedEventArgs e)
     {
         var folder = SelectedFolder;
-        var name = InputDialog.Show(this, "新しい中間データ(XML)を作成",
-            $"作成するファイルの名前を入力してください。\n作成先: {folder}", "新しい中間データ.xml");
-        if (name != null) _vm.CreateXml(folder, name);
+        var name = InputDialog.Show(this, "新しい中間データ(.lc)を作成",
+            $"作成するファイルの名前を入力してください（拡張子 .lc は自動で付きます）。\n作成先: {folder}",
+            "新しい中間データ" + LcFileStore.Extension);
+        if (name != null) _vm.CreateDataFile(folder, name);
     }
 
-    private void CtxDeleteXml_Click(object sender, RoutedEventArgs e)
+    private void CtxDeleteFile_Click(object sender, RoutedEventArgs e)
     {
-        if (SelectedTreeItem is XmlFileNode xml) _vm.DeleteXml(xml.FullPath);
+        if (SelectedTreeItem is DataFileNode xml) _vm.DeleteDataFile(xml.FullPath);
     }
 
     private void CtxShowInExplorer_Click(object sender, RoutedEventArgs e)
@@ -219,7 +232,7 @@ public partial class MainWindow : Window
         try
         {
             // ファイルなら、そのファイルを選んだ状態で開く
-            var psi = SelectedTreeItem is XmlFileNode xml
+            var psi = SelectedTreeItem is DataFileNode xml
                 ? new ProcessStartInfo("explorer.exe", $"/select,\"{xml.FullPath}\"")
                 : new ProcessStartInfo(SelectedFolder) { UseShellExecute = true };
             Process.Start(psi);

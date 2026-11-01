@@ -10,6 +10,8 @@ namespace LabelCollector.ViewModels;
 /// <summary>プロパティウィンドウに並ぶ、エクセルの読み込み設定 1件分</summary>
 public class ExcelSourceViewModel : INotifyPropertyChanged
 {
+    private readonly Action _changed;
+
     public ExcelSourceData Data { get; }
 
     public ICommand BrowseCommand { get; }
@@ -18,6 +20,7 @@ public class ExcelSourceViewModel : INotifyPropertyChanged
     public ExcelSourceViewModel(ExcelSourceData data, Action<ExcelSourceViewModel> remove, Action changed)
     {
         Data = data;
+        _changed = changed;
         BrowseCommand = new RelayCommand(() =>
         {
             var dlg = new OpenFolderDialog { Title = "エクセルのフォルダを選択" };
@@ -42,6 +45,9 @@ public class ExcelSourceViewModel : INotifyPropertyChanged
         get => Data.KeyColumn;
         set { if (Data.KeyColumn == value) return; Data.KeyColumn = value; OnPropertyChanged(); }
     }
+
+    /// <summary>入力が終わったときに保存する</summary>
+    public void RequestSave() => _changed();
 
     public event PropertyChangedEventHandler? PropertyChanged;
     private void OnPropertyChanged([CallerMemberName] string? name = null) =>

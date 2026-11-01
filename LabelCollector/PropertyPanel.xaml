@@ -1,7 +1,12 @@
 <UserControl x:Class="LabelCollector.PropertyPanel"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <!-- DataContext は MainViewModel。選択中のシート（SelectedSheet）の設定を表示・編集する -->
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:LabelCollector.ViewModels">
+    <!--
+        DataContext は MainViewModel。PropertyTarget に入っているものを表示・編集する。
+          ・中間データ（DataFileViewModel）… ファイルの中身（シートと、その設定）
+          ・シート（SheetViewModel）        … そのシートの設定だけ
+    -->
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
         <Style TargetType="TextBox">
@@ -17,71 +22,138 @@
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="Margin" Value="0,8,0,4"/>
         </Style>
-    </UserControl.Resources>
+        <Style x:Key="BottomBar" TargetType="Border">
+            <Setter Property="BorderBrush" Value="#D0D0D0"/>
+            <Setter Property="BorderThickness" Value="0,1,0,0"/>
+            <Setter Property="Padding" Value="6"/>
+        </Style>
 
-    <Grid>
-        <!-- シート未選択のとき -->
-        <TextBlock Text="左の一覧でシートを選択すると、ここに設定が表示されます"
-                   TextWrapping="Wrap" Margin="10" Foreground="Gray">
-            <TextBlock.Style>
-                <Style TargetType="TextBlock">
-                    <Setter Property="Visibility" Value="Collapsed"/>
-                    <Style.Triggers>
-                        <DataTrigger Binding="{Binding SelectedSheet}" Value="{x:Null}">
-                            <Setter Property="Visibility" Value="Visible"/>
-                        </DataTrigger>
-                    </Style.Triggers>
-                </Style>
-            </TextBlock.Style>
-        </TextBlock>
+        <!-- シートの設定（名前・種類・フォルダ or エクセルの指定）。シート単体でも、中間データの中でも使う -->
+        <DataTemplate x:Key="SheetBody" DataType="{x:Type vm:SheetViewModel}">
+            <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="60"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="名前" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Grid.Column="1" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                             LostFocus="Setting_LostFocus"/>
+                    <TextBlock Grid.Row="1" Text="種類" Style="{StaticResource FieldLabel}"/>
+                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding TypeName}" Margin="4,4"/>
+                </Grid>
 
-        <DockPanel DataContext="{Binding SelectedSheet}">
-            <DockPanel.Style>
-                <Style TargetType="DockPanel">
-                    <Style.Triggers>
-                        <DataTrigger Binding="{Binding}" Value="{x:Null}">
-                            <Setter Property="Visibility" Value="Collapsed"/>
-                        </DataTrigger>
-                    </Style.Triggers>
-                </Style>
-            </DockPanel.Style>
+                <!-- フォルダ（ファイル一覧）のシート -->
+                <Grid Visibility="{Binding IsFolder, Converter={StaticResource BoolToVis}}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="60"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="フォルダ" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Grid.Column="1" Text="{Binding FolderPath}" LostFocus="Setting_LostFocus"
+                             ToolTip="{Binding FolderPath}"/>
+                    <TextBlock Grid.Row="1" Text="パターン" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding FilePattern}" LostFocus="Setting_LostFocus"/>
+                </Grid>
 
-            <!-- 一番下：プロパティ（エクセルのフォルダ＋キー列名）を追加するボタン -->
-            <Border DockPanel.Dock="Bottom" BorderBrush="#D0D0D0" BorderThickness="0,1,0,0" Padding="6">
-                <StackPanel>
-                    <Button Content="＋ エクセルの指定を追加" Command="{Binding AddExcelSourceCommand}"
-                            Padding="10,5" HorizontalAlignment="Stretch"
-                            Visibility="{Binding IsExcel, Converter={StaticResource BoolToVis}}"
-                            ToolTip="読み込むエクセルのフォルダと、キーにする列名の指定を追加します"/>
-                    <TextBlock Text="フォルダのシートには追加できません" Foreground="Gray" HorizontalAlignment="Center"
-                               Visibility="{Binding IsFolder, Converter={StaticResource BoolToVis}}"/>
+                <!-- エクセルのシート：フォルダ＋キー列名の指定が並ぶ -->
+                <StackPanel Visibility="{Binding IsExcel, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="エクセルの指定" Style="{StaticResource SectionHeader}"/>
+                    <TextBlock Text="まだ指定がありません" Foreground="Gray" Margin="0,0,0,4">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ExcelSources.Count}" Value="0">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <ItemsControl ItemsSource="{Binding ExcelSources}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="#D0D0D0" BorderThickness="1" CornerRadius="2"
+                                        Padding="6" Margin="0,0,0,6">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="60"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+                                        <TextBlock Text="フォルダ" Style="{StaticResource FieldLabel}"/>
+                                        <TextBox Grid.Column="1" Text="{Binding FolderPath}" LostFocus="Setting_LostFocus"
+                                                 ToolTip="{Binding FolderPath}"/>
+                                        <Button Grid.Column="2" Content="…" Command="{Binding BrowseCommand}"
+                                                Margin="4,2,0,2" Padding="6,0" ToolTip="フォルダを選択"/>
+                                        <TextBlock Grid.Row="1" Text="キー列名" Style="{StaticResource FieldLabel}"/>
+                                        <TextBox Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
+                                                 Text="{Binding KeyColumn}" LostFocus="Setting_LostFocus"
+                                                 ToolTip="キーにする列の見出し（例：ID）。各シートの上から20行以内で探します"/>
+                                        <Button Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Content="削除"
+                                                Command="{Binding RemoveCommand}" HorizontalAlignment="Right"
+                                                Margin="0,4,0,0" Padding="10,1"/>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                 </StackPanel>
-            </Border>
+            </StackPanel>
+        </DataTemplate>
 
-            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                <StackPanel Margin="8,4,8,8">
+        <!-- シート単体：一番下のボタンでエクセルの指定（フォルダ＋キー列名）を追加 -->
+        <DataTemplate DataType="{x:Type vm:SheetViewModel}">
+            <DockPanel>
+                <Border DockPanel.Dock="Bottom" Style="{StaticResource BottomBar}">
+                    <StackPanel>
+                        <Button Content="＋ エクセルの指定を追加" Command="{Binding AddExcelSourceCommand}"
+                                Padding="10,5"
+                                Visibility="{Binding IsExcel, Converter={StaticResource BoolToVis}}"
+                                ToolTip="読み込むエクセルのフォルダと、キーにする列名の指定を追加します"/>
+                        <TextBlock Text="フォルダのシートには追加できません" Foreground="Gray" HorizontalAlignment="Center"
+                                   Visibility="{Binding IsFolder, Converter={StaticResource BoolToVis}}"/>
+                    </StackPanel>
+                </Border>
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="8,4,8,8">
+                        <TextBlock Text="シート" Style="{StaticResource SectionHeader}"/>
+                        <ContentControl Content="{Binding}" ContentTemplate="{StaticResource SheetBody}" Focusable="False"/>
+                        <Button Content="🔄 このシートを更新" Command="{Binding RefreshCommand}"
+                                Margin="0,10,0,0" Padding="10,4" HorizontalAlignment="Left"
+                                ToolTip="設定にしたがってデータ元を読み直します"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </DockPanel>
+        </DataTemplate>
 
-                    <!-- シート共通 -->
-                    <TextBlock Text="シート" Style="{StaticResource SectionHeader}"/>
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="60"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-                        <TextBlock Text="名前" Style="{StaticResource FieldLabel}"/>
-                        <TextBox Grid.Column="1" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
-                                 LostFocus="Setting_LostFocus"/>
-                        <TextBlock Grid.Row="1" Text="種類" Style="{StaticResource FieldLabel}"/>
-                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding TypeName}" Margin="4,4"/>
-                    </Grid>
+        <!-- 中間データ（.lc）：ファイルの中身。一番下のボタンでシートを追加 -->
+        <DataTemplate DataType="{x:Type vm:DataFileViewModel}">
+            <DockPanel>
+                <Border DockPanel.Dock="Bottom" Style="{StaticResource BottomBar}">
+                    <Button Content="＋ エクセルのシートを追加" Command="{Binding AddExcelSheetCommand}"
+                            Padding="10,5" IsEnabled="{Binding CanEdit}"
+                            ToolTip="この中間データにエクセルのシートを追加します（フォルダとキー列名は追加後に指定）"/>
+                </Border>
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="8,4,8,8">
 
-                    <!-- フォルダ（ファイル一覧）のシート -->
-                    <StackPanel Visibility="{Binding IsFolder, Converter={StaticResource BoolToVis}}">
-                        <TextBlock Text="フォルダ" Style="{StaticResource SectionHeader}"/>
+                        <!-- ファイルの情報 -->
+                        <TextBlock Text="中間データ" Style="{StaticResource SectionHeader}"/>
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="60"/>
@@ -90,71 +162,97 @@
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
-                            <TextBlock Text="フォルダ" Style="{StaticResource FieldLabel}"/>
-                            <TextBox Grid.Column="1" Text="{Binding FolderPath}" LostFocus="Setting_LostFocus"
-                                     ToolTip="{Binding FolderPath}"/>
-                            <TextBlock Grid.Row="1" Text="パターン" Style="{StaticResource FieldLabel}"/>
-                            <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding FilePattern}" LostFocus="Setting_LostFocus"/>
+                            <TextBlock Text="ファイル" Style="{StaticResource FieldLabel}"/>
+                            <TextBlock Grid.Column="1" Text="{Binding FileName}" FontWeight="Bold" Margin="4,3"
+                                       TextTrimming="CharacterEllipsis" ToolTip="{Binding FilePath}"/>
+                            <TextBlock Grid.Row="1" Text="場所" Style="{StaticResource FieldLabel}"/>
+                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding FolderPath}" Margin="4,3"
+                                       TextTrimming="CharacterEllipsis" ToolTip="{Binding FolderPath}"/>
+                            <TextBlock Grid.Row="2" Text="更新日時" Style="{StaticResource FieldLabel}"/>
+                            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding UpdatedText}" Margin="4,3"/>
+                            <TextBlock Grid.Row="3" Text="状態" Style="{StaticResource FieldLabel}"/>
+                            <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding StateText}" Margin="4,3" TextWrapping="Wrap"/>
+                            <Button Grid.Row="4" Grid.Column="1" Content="📂 この中間データを開く" Command="{Binding OpenCommand}"
+                                    HorizontalAlignment="Left" Padding="10,2" Margin="4,2,0,0"
+                                    Visibility="{Binding IsNotCurrent, Converter={StaticResource BoolToVis}}"/>
                         </Grid>
-                    </StackPanel>
+                        <TextBlock Text="{Binding LoadError}" Foreground="#C00000" TextWrapping="Wrap" Margin="0,6,0,0"/>
 
-                    <!-- エクセルのシート：フォルダ＋キー列名の指定が並ぶ -->
-                    <StackPanel Visibility="{Binding IsExcel, Converter={StaticResource BoolToVis}}">
-                        <TextBlock Text="エクセルの指定" Style="{StaticResource SectionHeader}"/>
-                        <TextBlock Text="まだ指定がありません。下の「＋ エクセルの指定を追加」で追加してください"
-                                   TextWrapping="Wrap" Foreground="Gray" Margin="0,0,0,4">
+                        <!-- 中身：シートごとの設定 -->
+                        <TextBlock Style="{StaticResource SectionHeader}">
+                            <Run Text="シート（"/><Run Text="{Binding Sheets.Count, Mode=OneWay}"/><Run Text="）"/>
+                        </TextBlock>
+                        <TextBlock Text="シートがありません。下の「＋ エクセルのシートを追加」で追加してください"
+                                   TextWrapping="Wrap" Foreground="Gray">
                             <TextBlock.Style>
                                 <Style TargetType="TextBlock">
                                     <Setter Property="Visibility" Value="Collapsed"/>
                                     <Style.Triggers>
-                                        <DataTrigger Binding="{Binding ExcelSources.Count}" Value="0">
+                                        <DataTrigger Binding="{Binding Sheets.Count}" Value="0">
                                             <Setter Property="Visibility" Value="Visible"/>
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </TextBlock.Style>
                         </TextBlock>
-                        <ItemsControl ItemsSource="{Binding ExcelSources}">
+                        <ItemsControl ItemsSource="{Binding Sheets}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Border BorderBrush="#D0D0D0" BorderThickness="1" CornerRadius="2"
-                                            Padding="6" Margin="0,0,0,6">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="60"/>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
-                                            <Grid.RowDefinitions>
-                                                <RowDefinition Height="Auto"/>
-                                                <RowDefinition Height="Auto"/>
-                                                <RowDefinition Height="Auto"/>
-                                            </Grid.RowDefinitions>
-                                            <TextBlock Text="フォルダ" Style="{StaticResource FieldLabel}"/>
-                                            <TextBox Grid.Column="1" Text="{Binding FolderPath}" LostFocus="Setting_LostFocus"
-                                                     ToolTip="{Binding FolderPath}"/>
-                                            <Button Grid.Column="2" Content="…" Command="{Binding BrowseCommand}"
-                                                    Margin="4,2,0,2" Padding="6,0" ToolTip="フォルダを選択"/>
-                                            <TextBlock Grid.Row="1" Text="キー列名" Style="{StaticResource FieldLabel}"/>
-                                            <TextBox Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
-                                                     Text="{Binding KeyColumn}" LostFocus="Setting_LostFocus"
-                                                     ToolTip="キーにする列の見出し（例：ID）。各シートの上から20行以内で探します"/>
-                                            <Button Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Content="削除"
-                                                    Command="{Binding RemoveCommand}" HorizontalAlignment="Right"
-                                                    Margin="0,4,0,0" Padding="10,1"/>
-                                        </Grid>
+                                    <Border BorderBrush="#B8C7D9" BorderThickness="1" CornerRadius="3"
+                                            Padding="8,6" Margin="0,0,0,8" Background="#F7FAFD">
+                                        <StackPanel>
+                                            <DockPanel Margin="0,0,0,4">
+                                                <Button DockPanel.Dock="Right" Content="削除" Padding="8,1" Margin="4,0,0,0"
+                                                        Command="{Binding DataContext.RemoveSheetCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                        CommandParameter="{Binding}" ToolTip="このシートを中間データから削除します"/>
+                                                <Button DockPanel.Dock="Right" Content="タブで開く" Padding="8,1" Margin="4,0,0,0"
+                                                        Command="{Binding DataContext.OpenSheetCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        Visibility="{Binding DataContext.IsCurrent, RelativeSource={RelativeSource AncestorType=ItemsControl}, Converter={StaticResource BoolToVis}}"/>
+                                                <TextBlock VerticalAlignment="Center" FontWeight="Bold" TextTrimming="CharacterEllipsis">
+                                                    <Run Text="{Binding Icon, Mode=OneWay}"/><Run Text=" "/><Run Text="{Binding Name, Mode=OneWay}"/>
+                                                </TextBlock>
+                                            </DockPanel>
+                                            <ContentControl Content="{Binding}" ContentTemplate="{StaticResource SheetBody}" Focusable="False"/>
+                                            <DockPanel Margin="0,2,0,0">
+                                                <Button DockPanel.Dock="Left" Content="🔄 更新" Command="{Binding RefreshCommand}"
+                                                        Padding="8,1" ToolTip="このシートをデータ元から読み直して保存します"/>
+                                                <Button DockPanel.Dock="Right" Content="＋ エクセルの指定を追加" HorizontalAlignment="Right"
+                                                        Command="{Binding AddExcelSourceCommand}" Padding="8,1"
+                                                        Visibility="{Binding IsExcel, Converter={StaticResource BoolToVis}}"/>
+                                            </DockPanel>
+                                            <TextBlock Text="{Binding Status}" Foreground="Gray" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                        </StackPanel>
                                     </Border>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </StackPanel>
+                </ScrollViewer>
+            </DockPanel>
+        </DataTemplate>
+    </UserControl.Resources>
 
-                    <Button Content="🔄 このシートを更新" Command="{Binding RefreshCommand}"
-                            Margin="0,10,0,0" Padding="10,4" HorizontalAlignment="Left"
-                            ToolTip="設定にしたがってデータ元を読み直します"/>
-                </StackPanel>
-            </ScrollViewer>
-        </DockPanel>
+    <Grid>
+        <!-- 何も選んでいないとき -->
+        <TextBlock Text="左のエクスプローラーで中間データ（.lc）かシートを選択すると、ここで中身を編集できます"
+                   TextWrapping="Wrap" Margin="10" Foreground="Gray">
+            <TextBlock.Style>
+                <Style TargetType="TextBlock">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding PropertyTarget}" Value="{x:Null}">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </TextBlock.Style>
+        </TextBlock>
+
+        <ContentControl Content="{Binding PropertyTarget}" Focusable="False"/>
     </Grid>
 </UserControl>

@@ -2,7 +2,7 @@ using System.Xml.Serialization;
 
 namespace LabelCollector.Models;
 
-/// <summary>中間データ（XML）のルート。複数のシートを持つ</summary>
+/// <summary>中間データ（.lc ファイル、中身は XML）のルート。複数のシートを持つ</summary>
 [XmlRoot("Workspace")]
 public class TableData
 {

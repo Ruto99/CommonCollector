@@ -8,7 +8,7 @@ using LabelCollector.Services;
 namespace LabelCollector.ViewModels;
 
 /// <summary>
-/// 左側のフォルダエクスプローラー。作業フォルダの中のフォルダと中間データ（XML）を表示する。
+/// 左側のフォルダエクスプローラー。作業フォルダの中のフォルダと中間データ（.lc）を表示する。
 /// 開いている中間データの下には、そのシートが並ぶ。
 /// </summary>
 public class ExplorerViewModel : INotifyPropertyChanged
@@ -35,8 +35,8 @@ public class ExplorerViewModel : INotifyPropertyChanged
 
     internal ObservableCollection<SheetViewModel> Sheets => _main.Sheets;
 
-    internal bool IsCurrentXml(string path) =>
-        string.Equals(Path.GetFullPath(path), Path.GetFullPath(_main.XmlPath), StringComparison.OrdinalIgnoreCase);
+    internal bool IsCurrentFile(string path) =>
+        string.Equals(Path.GetFullPath(path), Path.GetFullPath(_main.FilePath), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>ツリーを読み直す。開いていたフォルダは開いたままにする</summary>
     public void Reload()
@@ -69,7 +69,7 @@ public class ExplorerViewModel : INotifyPropertyChanged
         foreach (var child in node.Children.OfType<ExplorerNode>().ToList())
         {
             // 開いている中間データは、シートが見えるよう常に展開する
-            if (set.Contains(child.FullPath) || child is XmlFileNode { IsCurrent: true })
+            if (set.Contains(child.FullPath) || child is DataFileNode { IsCurrent: true })
             {
                 child.IsExpanded = true;
                 RestoreExpanded(child, set);
@@ -82,7 +82,7 @@ public class ExplorerViewModel : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }
 
-/// <summary>エクスプローラーの1項目（フォルダ or 中間データXML）</summary>
+/// <summary>エクスプローラーの1項目（フォルダ or 中間データ）</summary>
 public abstract class ExplorerNode : INotifyPropertyChanged
 {
     protected ExplorerNode(string fullPath) => FullPath = fullPath;
@@ -155,8 +155,8 @@ public class FolderNode : ExplorerNode
                          .OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
                 _children.Add(new FolderNode(_owner, dir));
 
-            foreach (var file in EnumerateXml(FullPath).OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
-                _children.Add(new XmlFileNode(_owner, file));
+            foreach (var file in EnumerateDataFiles(FullPath).OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+                _children.Add(new DataFileNode(_owner, file));
         }
         catch (Exception ex)
         {
@@ -168,7 +168,7 @@ public class FolderNode : ExplorerNode
     {
         try
         {
-            return Directory.EnumerateDirectories(FullPath).Any(IsVisible) || EnumerateXml(FullPath).Any();
+            return Directory.EnumerateDirectories(FullPath).Any(IsVisible) || EnumerateDataFiles(FullPath).Any();
         }
         catch
         {
@@ -176,13 +176,11 @@ public class FolderNode : ExplorerNode
         }
     }
 
-    private static IEnumerable<string> EnumerateXml(string folder) =>
-        Directory.EnumerateFiles(folder, "*.xml").Where(f => IsVisible(f) && !IsAppSettings(f));
-
-    // アプリの設定ファイル（exe と同じフォルダの settings.xml）は中間データではないので出さない
-    private static bool IsAppSettings(string file) =>
-        string.Equals(Path.GetFullPath(file), Path.Combine(AppContext.BaseDirectory, "settings.xml"),
-                      StringComparison.OrdinalIgnoreCase);
+    private static IEnumerable<string> EnumerateDataFiles(string folder) =>
+        Directory.EnumerateFiles(folder, "*" + LcFileStore.Extension)
+                 // "*.lc" は Windows では "*.lcx" なども拾うので、拡張子を確かめる
+                 .Where(f => string.Equals(Path.GetExtension(f), LcFileStore.Extension, StringComparison.OrdinalIgnoreCase))
+                 .Where(IsVisible);
 
     private static bool IsVisible(string path)
     {
@@ -198,10 +196,10 @@ public class FolderNode : ExplorerNode
     }
 }
 
-/// <summary>中間データ（XML）。開いているものは太字で、下にシートが並ぶ</summary>
-public class XmlFileNode(ExplorerViewModel owner, string path) : ExplorerNode(path)
+/// <summary>中間データ（.lc）。開いているものは太字で、下にシートが並ぶ</summary>
+public class DataFileNode(ExplorerViewModel owner, string path) : ExplorerNode(path)
 {
-    public bool IsCurrent => owner.IsCurrentXml(FullPath);
+    public bool IsCurrent => owner.IsCurrentFile(FullPath);
     public override string Icon => IsCurrent ? "📗" : "📄";
     public override bool IsBold => IsCurrent;
     public override string FolderPath => Path.GetDirectoryName(FullPath) ?? "";

@@ -4,7 +4,7 @@ using LabelCollector.ViewModels;
 
 namespace LabelCollector;
 
-/// <summary>右側のプロパティウィンドウ。選択中のシートの設定を編集する</summary>
+/// <summary>右側のプロパティウィンドウ。中間データ（.lc）の中身や、シートの設定を編集する</summary>
 public partial class PropertyPanel : UserControl
 {
     public PropertyPanel()
@@ -12,9 +12,17 @@ public partial class PropertyPanel : UserControl
         InitializeComponent();
     }
 
-    // 名前・フォルダ・キー列名などの入力が終わったら保存
+    // 名前・フォルダ・キー列名などの入力が終わったら、その項目が入っている中間データに保存
     private void Setting_LostFocus(object sender, RoutedEventArgs e)
     {
-        if (DataContext is MainViewModel vm) vm.SelectedSheet?.RequestSave();
+        switch ((sender as FrameworkElement)?.DataContext)
+        {
+            case SheetViewModel sheet:
+                sheet.RequestSave();
+                break;
+            case ExcelSourceViewModel source:
+                source.RequestSave();
+                break;
+        }
     }
 }

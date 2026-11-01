@@ -88,7 +88,7 @@ public class SheetViewModel : INotifyPropertyChanged
     private string _status = "";
     public string Status { get => _status; set { _status = value; OnPropertyChanged(); } }
 
-    /// <summary>XML保存用に、表の内容を Data へ反映して返す</summary>
+    /// <summary>中間データ保存用に、表の内容を Data へ反映して返す</summary>
     public SheetData ToData()
     {
         Data.Rows = Rows.ToList();

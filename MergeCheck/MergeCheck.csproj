@@ -8,6 +8,6 @@
   <ItemGroup>
     <Compile Include="..\LabelCollector\Models\*.cs" />
     <Compile Include="..\LabelCollector\Services\RowMerger.cs" />
-    <Compile Include="..\LabelCollector\Services\XmlStore.cs" />
+    <Compile Include="..\LabelCollector\Services\LcFileStore.cs" />
   </ItemGroup>
 </Project>

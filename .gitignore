@@ -3,7 +3,9 @@ obj/
 .vs/
 *.user
 Workspace.xml
+Workspace.lc
 Workspace.xml.bak
+Workspace.lc.bak
 settings.xml
 logs/
 *.broken-*

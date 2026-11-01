@@ -4,7 +4,7 @@ using System.Xml.Serialization;
 
 namespace LabelCollector.Services;
 
-/// <summary>アプリの設定（最後に使った中間データXMLの場所、作業フォルダ）。exe と同じフォルダの settings.xml に保存</summary>
+/// <summary>アプリの設定（最後に使った中間データ(.lc)の場所、作業フォルダ）。exe と同じフォルダの settings.xml に保存</summary>
 public class AppSettings
 {
     private static readonly string FilePath = Path.Combine(AppContext.BaseDirectory, "settings.xml");

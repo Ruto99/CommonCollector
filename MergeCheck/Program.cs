@@ -10,10 +10,10 @@ rows.First(r => r.Key == "c").ColumnB = "メモc";
 var r2 = RowMerger.Merge(rows, [new("x","X1"), new("a","A1"), new("c","C2")], DateTime.Now);
 Dump("2回目", r2.Rows);
 
-// XMLに保存→読み込み
-var path = Path.Combine(Path.GetTempPath(), "mergecheck.xml");
-XmlStore.Save(path, new TableData { Sheets = { new SheetData { Name = "t", Rows = r2.Rows } } });
-var loaded = XmlStore.Load(path).Sheets[0].Rows;
+// 中間データ(.lc)に保存→読み込み
+var path = Path.Combine(Path.GetTempPath(), "mergecheck.lc");
+LcFileStore.Save(path, new TableData { Sheets = { new SheetData { Name = "t", Rows = r2.Rows } } });
+var loaded = LcFileStore.Load(path).Sheets[0].Rows;
 
 // 3回目: b が戻ってくる
 var r3 = RowMerger.Merge(loaded, [new("a","A1"), new("b","B1"), new("c","C2")], DateTime.Now);
