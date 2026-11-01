@@ -23,6 +23,9 @@ public partial class PropertyPanel : UserControl
             case ExcelSourceViewModel source:
                 source.RequestSave();
                 break;
+            case KeyColumnViewModel key:
+                key.RequestSave();
+                break;
         }
     }
 }

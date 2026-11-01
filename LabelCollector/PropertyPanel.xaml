@@ -100,10 +100,27 @@
                                                  ToolTip="{Binding FolderPath}"/>
                                         <Button Grid.Column="2" Content="…" Command="{Binding BrowseCommand}"
                                                 Margin="4,2,0,2" Padding="6,0" ToolTip="フォルダを選択"/>
-                                        <TextBlock Grid.Row="1" Text="キー列名" Style="{StaticResource FieldLabel}"/>
-                                        <TextBox Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
-                                                 Text="{Binding KeyColumn}" LostFocus="Setting_LostFocus"
-                                                 ToolTip="キーにする列の見出し（例：ID）。各シートの上から20行以内で探します"/>
+                                        <!-- キー列名は複数指定できる（ファイルによって列名が違う場合のため） -->
+                                        <TextBlock Grid.Row="1" Text="キー列名" Style="{StaticResource FieldLabel}"
+                                                   VerticalAlignment="Top" Margin="0,5,6,0"/>
+                                        <StackPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2">
+                                            <ItemsControl ItemsSource="{Binding KeyColumns}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <DockPanel>
+                                                            <Button DockPanel.Dock="Right" Content="×" Command="{Binding RemoveCommand}"
+                                                                    Margin="4,2,0,2" Padding="6,0" ToolTip="このキー列名を削除"/>
+                                                            <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
+                                                                     LostFocus="Setting_LostFocus"
+                                                                     ToolTip="キーにする列の見出し（例：ID）。各シートの上から20行以内で探します"/>
+                                                        </DockPanel>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                            <Button Content="＋ キー列名を追加" Command="{Binding AddKeyColumnCommand}"
+                                                    HorizontalAlignment="Left" Margin="0,2,0,0" Padding="8,1"
+                                                    ToolTip="ファイルによって列名が違うときに、別の列名を追加します。各シートでは上の候補から順に探し、最初に見つかった列をキーにします"/>
+                                        </StackPanel>
                                         <Button Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Content="削除"
                                                 Command="{Binding RemoveCommand}" HorizontalAlignment="Right"
                                                 Margin="0,4,0,0" Padding="10,1"/>

@@ -41,9 +41,9 @@ public class SheetViewModel : INotifyPropertyChanged
         new(data, RemoveExcelSource, _requestSave);
 
     /// <summary>エクセルの読み込み設定を1件追加する</summary>
-    public ExcelSourceViewModel AddExcelSource(string folderPath = "", string keyColumn = "ID")
+    public ExcelSourceViewModel AddExcelSource(string folderPath = "")
     {
-        var src = CreateSource(new ExcelSourceData { FolderPath = folderPath, KeyColumn = keyColumn });
+        var src = CreateSource(ExcelSourceData.CreateDefault(folderPath));
         ExcelSources.Add(src);
         _requestSave();
         return src;
@@ -52,7 +52,7 @@ public class SheetViewModel : INotifyPropertyChanged
     private void RemoveExcelSource(ExcelSourceViewModel src)
     {
         ExcelSources.Remove(src);
-        AppLogger.Instance.Info($"[{Name}] エクセルの指定を削除: {src.FolderPath} (キー列: {src.KeyColumn})");
+        AppLogger.Instance.Info($"[{Name}] エクセルの指定を削除: {src.FolderPath} (キー列: {src.KeyColumnsText})");
         _requestSave();
     }
 
@@ -143,8 +143,8 @@ public class SheetViewModel : INotifyPropertyChanged
         var all = new List<SourceRecord>();
         foreach (var src in ExcelSources)
         {
-            AppLogger.Instance.Info($"[{Name}] 更新開始: {src.FolderPath} (キー列: {src.KeyColumn})");
-            var records = new ExcelDataSource(src.FolderPath, src.KeyColumn).Fetch();
+            AppLogger.Instance.Info($"[{Name}] 更新開始: {src.FolderPath} (キー列: {src.KeyColumnsText})");
+            var records = new ExcelDataSource(src.FolderPath, src.Data.KeyColumns).Fetch();
             AppLogger.Instance.Info($"[{Name}]   {records.Count} 件読み込み");
             all.AddRange(records);
         }

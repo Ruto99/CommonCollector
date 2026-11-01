@@ -114,7 +114,7 @@ public class DataFileViewModel : INotifyPropertyChanged
         {
             Name = MainViewModel.UniqueName(Sheets, "新しいシート"),
             Type = SourceType.Excel,
-            ExcelSources = { new ExcelSourceData() },
+            ExcelSources = { ExcelSourceData.CreateDefault() },
         };
         Sheets.Add(new SheetViewModel(data, IsCurrent ? () => _main.Save() : Save));
         AppLogger.Instance.Info($"[{FileName}] シートを追加: {data.Name}");

@@ -29,11 +29,25 @@ public class FolderDataSource(string folder, string pattern) : IDataSource
 
 /// <summary>
 /// フォルダ内のエクセルファイル（.xlsx / .xlsm / .xls）を読む。
-/// 各シートの上のほうから「キー列名」と同じ文字のセルを探して見出し行とし、
+/// 各シートの上のほうから「キー列名」の候補のどれかと同じ文字のセルを探して見出し行とし、
 /// その下の行の値をキーにする。A列＝どのファイル・シートにあったか。
+/// キー列名の候補は複数指定でき（ファイルによって列名が違う場合のため）、
+/// 1つの見出し行に複数の候補があるときは、候補の順番が先のものを使う。
 /// </summary>
-public class ExcelDataSource(string folder, string keyColumn) : IDataSource
+public class ExcelDataSource : IDataSource
 {
+    private readonly string folder;
+    private readonly List<string> keyColumns;
+
+    public ExcelDataSource(string folder, IEnumerable<string> keyColumns)
+    {
+        this.folder = folder;
+        this.keyColumns = keyColumns.Select(k => k.Trim()).Where(k => k.Length > 0)
+                                    .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private string KeyColumnsText => string.Join("・", keyColumns.Select(k => $"「{k}」"));
+
     private static readonly string[] Extensions = [".xlsx", ".xlsm", ".xls"];
 
     /// <summary>見出し行を探す範囲（上から何行目まで）</summary>
@@ -51,7 +65,7 @@ public class ExcelDataSource(string folder, string keyColumn) : IDataSource
             throw new ArgumentException("エクセルのフォルダが指定されていません");
         if (!Directory.Exists(folder))
             throw new DirectoryNotFoundException($"フォルダが見つかりません: {folder}");
-        if (string.IsNullOrWhiteSpace(keyColumn))
+        if (keyColumns.Count == 0)
             throw new ArgumentException("キーにする列名が指定されていません");
 
         var files = Directory
@@ -79,7 +93,7 @@ public class ExcelDataSource(string folder, string keyColumn) : IDataSource
         }
 
         if (files.Count > 0 && sheetsWithKey == 0)
-            AppLogger.Instance.Warn($"列「{keyColumn}」が見つかるシートがありませんでした: {folder}");
+            AppLogger.Instance.Warn($"列{KeyColumnsText}が見つかるシートがありませんでした: {folder}");
 
         return list;
     }
@@ -119,12 +133,14 @@ public class ExcelDataSource(string folder, string keyColumn) : IDataSource
         return found;
     }
 
+    /// <returns>キー列の位置。この行に候補が無ければ -1</returns>
     private int FindKeyColumn(IExcelDataReader reader)
     {
-        for (int i = 0; i < reader.FieldCount; i++)
+        var headers = Enumerable.Range(0, reader.FieldCount).Select(i => CellText(reader.GetValue(i))).ToList();
+        foreach (var name in keyColumns) // 候補の順番が先のものを優先
         {
-            if (string.Equals(CellText(reader.GetValue(i)), keyColumn.Trim(), StringComparison.OrdinalIgnoreCase))
-                return i;
+            var index = headers.FindIndex(h => string.Equals(h, name, StringComparison.OrdinalIgnoreCase));
+            if (index >= 0) return index;
         }
         return -1;
     }

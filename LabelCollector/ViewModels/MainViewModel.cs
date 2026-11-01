@@ -440,7 +440,7 @@ public class MainViewModel : INotifyPropertyChanged
         {
             Name = UniqueName(name),
             Type = SourceType.Excel,
-            ExcelSources = { new ExcelSourceData { FolderPath = dlg.FolderName, KeyColumn = "ID" } },
+            ExcelSources = { ExcelSourceData.CreateDefault(dlg.FolderName) },
         });
         sheet.Refresh();
     }

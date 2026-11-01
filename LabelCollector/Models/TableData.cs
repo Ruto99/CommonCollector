@@ -63,11 +63,36 @@ public class SheetData
 /// <summary>エクセルの読み込み設定 1件分：どのフォルダの、どの列をキーにするか</summary>
 public class ExcelSourceData
 {
+    /// <summary>キー列名の既定値</summary>
+    public const string DefaultKeyColumn = "ID";
+
     /// <summary>エクセルファイルが入っているフォルダ</summary>
     public string FolderPath { get; set; } = "";
 
-    /// <summary>キーにする列の名前（見出し行の文字）</summary>
-    public string KeyColumn { get; set; } = "ID";
+    /// <summary>
+    /// キーにする列の名前（見出し行の文字）の候補。ファイルによって列名が違うことがあるので複数指定できる。
+    /// 各シートでは、この順に探して最初に見つかった列をキーにする
+    /// </summary>
+    [XmlArray("KeyColumns")]
+    [XmlArrayItem("Column")]
+    public List<string> KeyColumns { get; set; } = new();
+
+    /// <summary>
+    /// 以前の形式（キー列名が1つだけの &lt;KeyColumn&gt;）を読むためのもの。読んだ値は KeyColumns に入る。保存はしない
+    /// </summary>
+    [XmlElement("KeyColumn")]
+    public string? LegacyKeyColumn
+    {
+        get => null;
+        set
+        {
+            if (!string.IsNullOrWhiteSpace(value) && !KeyColumns.Contains(value)) KeyColumns.Add(value);
+        }
+    }
+
+    /// <summary>キー列名「ID」が入った新しい設定を作る</summary>
+    public static ExcelSourceData CreateDefault(string folderPath = "") =>
+        new() { FolderPath = folderPath, KeyColumns = { DefaultKeyColumn } };
 }
 
 /// <summary>データ元から取ってきた1件分</summary>
