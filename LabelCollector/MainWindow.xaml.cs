@@ -34,6 +34,10 @@ public partial class MainWindow : Window
 
         _vm.ActivateRequested += Activate;
 
+        // 「シートを追加」のメニューに、登録されているデータ元の種類を並べる
+        FillAddSheetMenu(MenuAddSheet);
+        FillAddSheetMenu(CtxAddSheet);
+
         // タブを切り替えたら、そのシートをプロパティに表示する
         Dock.ActiveContentChanged += (_, _) =>
         {
@@ -51,6 +55,27 @@ public partial class MainWindow : Window
     {
         if (LogToggle.IsChecked == true) LogAnchorable.Show();
         else LogAnchorable.Hide();
+    }
+
+    // ---- シートの追加 ----
+
+    /// <summary>メニューの下に、データ元の種類ごとの「シートを追加」を並べる</summary>
+    private void FillAddSheetMenu(ItemsControl parent)
+    {
+        parent.Items.Clear();
+        foreach (var kind in DataSourceRegistry.Kinds)
+        {
+            var item = new MenuItem { Header = $"{kind.Icon} {kind.DisplayName}..." };
+            item.Click += (_, _) => _vm.AddSheet(kind);
+            parent.Items.Add(item);
+        }
+    }
+
+    private void AddSheetButton_Click(object sender, RoutedEventArgs e)
+    {
+        var menu = new ContextMenu { PlacementTarget = AddSheetButton, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom };
+        FillAddSheetMenu(menu);
+        menu.IsOpen = true;
     }
 
     // ---- メニュー ----
@@ -192,8 +217,7 @@ public partial class MainWindow : Window
         SetVisible(CtxCreateFile, isFolder || xml != null);
         SetVisible(CtxDeleteFile, xml != null);
         CtxDeleteFile.IsEnabled = xml is { IsCurrent: false };
-        SetVisible(CtxAddExcel, xml is { IsCurrent: true });
-        SetVisible(CtxAddFolder, xml is { IsCurrent: true });
+        SetVisible(CtxAddSheet, xml is { IsCurrent: true });
         SetVisible(CtxOpenSheet, isSheet);
         SetVisible(CtxRemoveSheet, isSheet);
     }

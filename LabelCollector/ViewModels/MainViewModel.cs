@@ -79,8 +79,6 @@ public class MainViewModel : INotifyPropertyChanged
     private string _status = "";
     public string Status { get => _status; set { _status = value; OnPropertyChanged(); } }
 
-    public ICommand AddFolderCommand { get; }
-    public ICommand AddExcelCommand { get; }
     public ICommand OpenCommand { get; }
     public ICommand RemoveSheetCommand { get; }
     public ICommand RefreshAllCommand { get; }
@@ -106,8 +104,6 @@ public class MainViewModel : INotifyPropertyChanged
         // シートが削除されたら、タブ・選択・プロパティからも外す
         Sheets.CollectionChanged += Sheets_CollectionChanged;
 
-        AddFolderCommand = new RelayCommand(AddFolder);
-        AddExcelCommand = new RelayCommand(AddExcel);
         OpenCommand = new RelayCommand(() => Open(SelectedSheet));
         RemoveSheetCommand = new RelayCommand(RemoveSheet);
         RefreshAllCommand = new RelayCommand(RefreshAll);
@@ -415,41 +411,24 @@ public class MainViewModel : INotifyPropertyChanged
 
     private static AppLogger Log => AppLogger.Instance;
 
-    private void AddFolder()
+    /// <summary>
+    /// データ元を1つ持つシートを追加する。場所（フォルダ・ファイル）を選んだら読み込む
+    /// </summary>
+    public void AddSheet(DataSourceKind kind)
     {
-        var dlg = new OpenFolderDialog { Title = "管理するフォルダを選択" };
-        if (dlg.ShowDialog() != true) return;
+        var source = SourceEditing.CreateSource(kind);
+        if (source == null) return;
 
-        var sheet = Add(new SheetData
-        {
-            Name = UniqueName(Path.GetFileName(dlg.FolderName.TrimEnd('\\')) is { Length: > 0 } n ? n : dlg.FolderName),
-            Type = SourceType.Folder,
-            FolderPath = dlg.FolderName,
-        });
-        sheet.Refresh();
-    }
-
-    /// <summary>エクセルのシートを追加する。フォルダを選んだら、キー列名「ID」で1件目の指定を作る</summary>
-    private void AddExcel()
-    {
-        var dlg = new OpenFolderDialog { Title = "エクセルファイルが入っているフォルダを選択" };
-        if (dlg.ShowDialog() != true) return;
-
-        var name = Path.GetFileName(dlg.FolderName.TrimEnd('\\')) is { Length: > 0 } n ? n : dlg.FolderName;
-        var sheet = Add(new SheetData
-        {
-            Name = UniqueName(name),
-            Type = SourceType.Excel,
-            ExcelSources = { ExcelSourceData.CreateDefault(dlg.FolderName) },
-        });
-        sheet.Refresh();
+        var data = SheetData.CreateNew(UniqueName(SourceEditing.SuggestName(source, kind.DisplayName)));
+        data.Sources.Add(source);
+        Add(data).Refresh();
     }
 
     private SheetViewModel Add(SheetData data)
     {
         var sheet = new SheetViewModel(data, () => Save());
         Sheets.Add(sheet);
-        Log.Info($"シートを追加: {sheet.Name} ({(sheet.IsFolder ? data.FolderPath : string.Join(", ", data.ExcelSources.Select(x => x.FolderPath)))})");
+        Log.Info($"シートを追加: {sheet.Name} ({string.Join(", ", data.Sources.Select(x => x.Location))})");
         SelectedSheet = sheet;
         Open(sheet);
         Save();

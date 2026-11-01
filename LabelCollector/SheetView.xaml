@@ -10,12 +10,12 @@
                     Padding="12,3" Margin="8,0,0,0"/>
             <Button DockPanel.Dock="Right" Content="更新" Command="{Binding RefreshCommand}"
                     Padding="18,3" Margin="8,0,0,0" MinWidth="72"
-                    ToolTip="データ元を読み直します（設定は右のプロパティウィンドウ）"/>
+                    ToolTip="全データ元を読み直します（設定は右のプロパティウィンドウ）"/>
             <TextBlock Text="{Binding Status}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
         </DockPanel>
 
         <!-- 表 -->
-        <DataGrid ItemsSource="{Binding Rows}" AutoGenerateColumns="False"
+        <DataGrid x:Name="Table" ItemsSource="{Binding Rows}" AutoGenerateColumns="False"
                   CanUserAddRows="False" CanUserDeleteRows="False"
                   CellEditEnding="DataGrid_CellEditEnding">
             <DataGrid.RowStyle>
@@ -31,15 +31,7 @@
                     </Style.Triggers>
                 </Style>
             </DataGrid.RowStyle>
-            <DataGrid.Columns>
-                <DataGridTextColumn Header="状態" Binding="{Binding State}" IsReadOnly="True" MinWidth="70" Width="70"/>
-                <DataGridTextColumn Header="キー" Binding="{Binding Key}" IsReadOnly="True" MinWidth="140" Width="2*"/>
-                <DataGridTextColumn Header="A列（自動）" Binding="{Binding ColumnA}" IsReadOnly="True" MinWidth="120" Width="2*"/>
-                <DataGridTextColumn Header="B列（手動）"
-                                    Binding="{Binding ColumnB, UpdateSourceTrigger=PropertyChanged}" MinWidth="160" Width="3*"/>
-                <DataGridTextColumn Header="最終確認" Binding="{Binding LastSeen, StringFormat=yyyy/MM/dd HH:mm}"
-                                    IsReadOnly="True" MinWidth="130" Width="130"/>
-            </DataGrid.Columns>
+            <!-- 列はシートの設定（データ元の取り込む列・手入力の列）から SheetView.xaml.cs で作る -->
         </DataGrid>
     </DockPanel>
 </UserControl>

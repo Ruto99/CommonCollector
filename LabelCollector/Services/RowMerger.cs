@@ -6,9 +6,9 @@ public record MergeResult(List<RowItem> Rows, int Added, int Updated, int Missin
 
 /// <summary>
 /// データ元の最新内容と既存の行をキーで照合してマージする。
-/// ・同じキーの行 → A列だけ更新し、B列はそのまま
-/// ・新しいキー   → 行を追加（B列は空）
-/// ・消えたキー   → 削除せず Missing にして B列を保持（再び現れたら自動で復活）
+/// ・同じキーの行 → 自動の列と取得元だけ更新し、手入力の列はそのまま
+/// ・新しいキー   → 行を追加（手入力の列は空）
+/// ・消えたキー   → 削除せず Missing にして手入力の値を保持（再び現れたら自動で復活）
 /// </summary>
 public static class RowMerger
 {
@@ -32,22 +32,19 @@ public static class RowMerger
             if (byKey.TryGetValue(rec.Key, out var row))
             {
                 if (row.State == RowState.Missing) restored++;
-                if (row.ColumnA != rec.ValueA) updated++;
-                row.ColumnA = rec.ValueA;
+                var changed = row.SetAutoValues(rec.Values);
+                if (row.Origin != rec.Origin) changed = true;
+                if (changed) updated++;
+                row.Origin = rec.Origin;
                 row.State = RowState.Normal;
                 row.LastSeen = now;
                 result.Add(row);
             }
             else
             {
-                result.Add(new RowItem
-                {
-                    Key = rec.Key,
-                    ColumnA = rec.ValueA,
-                    ColumnB = "",
-                    State = RowState.New,
-                    LastSeen = now,
-                });
+                var newRow = new RowItem { Key = rec.Key, Origin = rec.Origin, State = RowState.New, LastSeen = now };
+                newRow.SetAutoValues(rec.Values);
+                result.Add(newRow);
                 added++;
             }
         }

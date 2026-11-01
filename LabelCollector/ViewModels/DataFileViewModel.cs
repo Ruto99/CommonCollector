@@ -23,11 +23,10 @@ public class DataFileViewModel : INotifyPropertyChanged
         FilePath = path;
         IsCurrent = isCurrent;
 
-        AddExcelSheetCommand = new RelayCommand(AddExcelSheet);
+        AddSheetCommand = new RelayCommand(AddSheet);
         OpenCommand = new RelayCommand(() => _main.OpenDataFile(FilePath));
         OpenSheetCommand = new RelayCommand<SheetViewModel>(s => _main.OpenSheet(s));
         RemoveSheetCommand = new RelayCommand<SheetViewModel>(RemoveSheet);
-        AddExcelSourceCommand = new RelayCommand<SheetViewModel>(s => s.AddExcelSource());
     }
 
     /// <summary>ファイルの中身を編集するための ViewModel を作る</summary>
@@ -74,11 +73,10 @@ public class DataFileViewModel : INotifyPropertyChanged
 
     public ObservableCollection<SheetViewModel> Sheets { get; private init; } = new();
 
-    public ICommand AddExcelSheetCommand { get; }
+    public ICommand AddSheetCommand { get; }
     public ICommand OpenCommand { get; }
     public ICommand OpenSheetCommand { get; }
     public ICommand RemoveSheetCommand { get; }
-    public ICommand AddExcelSourceCommand { get; }
 
     /// <summary>変更をファイルへ保存する</summary>
     public void Save()
@@ -106,16 +104,11 @@ public class DataFileViewModel : INotifyPropertyChanged
         }
     }
 
-    /// <summary>エクセルのシートを追加する。フォルダとキー列名は追加後にプロパティで指定する</summary>
-    private void AddExcelSheet()
+    /// <summary>空のシートを追加する。データ元は追加後にプロパティの「＋ データ元を追加」で指定する</summary>
+    private void AddSheet()
     {
         if (!CanEdit) return;
-        var data = new SheetData
-        {
-            Name = MainViewModel.UniqueName(Sheets, "新しいシート"),
-            Type = SourceType.Excel,
-            ExcelSources = { ExcelSourceData.CreateDefault() },
-        };
+        var data = SheetData.CreateNew(MainViewModel.UniqueName(Sheets, "新しいシート"));
         Sheets.Add(new SheetViewModel(data, IsCurrent ? () => _main.Save() : Save));
         AppLogger.Instance.Info($"[{FileName}] シートを追加: {data.Name}");
         Save();

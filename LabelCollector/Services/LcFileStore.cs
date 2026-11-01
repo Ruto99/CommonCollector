@@ -21,13 +21,20 @@ public static class LcFileStore
     public static string WithExtension(string fileName) =>
         fileName.EndsWith(Extension, StringComparison.OrdinalIgnoreCase) ? fileName : fileName + Extension;
 
-    private static readonly XmlSerializer Serializer = new(typeof(TableData));
+    /// <summary>
+    /// データ元の設定クラスは DataSourceRegistry に登録されたものを使う（xsi:type で種類を区別して保存する）。
+    /// 登録が済んでから作るよう、初めて使うときに作る
+    /// </summary>
+    private static readonly Lazy<XmlSerializer> Serializer =
+        new(() => new XmlSerializer(typeof(TableData), DataSourceRegistry.SettingsTypes));
 
     public static TableData Load(string path)
     {
         if (!File.Exists(path)) return new TableData();
         using var stream = File.OpenRead(path);
-        return (TableData?)Serializer.Deserialize(stream) ?? new TableData();
+        var data = (TableData?)Serializer.Value.Deserialize(stream) ?? new TableData();
+        data.MigrateLegacy(); // 以前の形式なら今の形式に直す
+        return data;
     }
 
     public static void Save(string path, TableData data)
@@ -38,7 +45,7 @@ public static class LcFileStore
         var tmp = path + ".tmp";
         var settings = new XmlWriterSettings { Indent = true, Encoding = new UTF8Encoding(false) };
         using (var writer = XmlWriter.Create(tmp, settings))
-            Serializer.Serialize(writer, data);
+            Serializer.Value.Serialize(writer, data);
 
         if (File.Exists(path))
             File.Replace(tmp, path, path + ".bak");

@@ -28,7 +28,6 @@
         <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveCommand}"/>
         <KeyBinding Gesture="Ctrl+Shift+S" Command="{Binding SaveAsCommand}"/>
         <KeyBinding Gesture="F5" Command="{Binding RefreshAllCommand}"/>
-        <KeyBinding Gesture="Ctrl+Shift+O" Command="{Binding AddFolderCommand}"/>
     </Window.InputBindings>
 
     <DockPanel>
@@ -57,8 +56,8 @@
             </MenuItem>
 
             <MenuItem Header="シート(_S)">
-                <MenuItem Header="フォルダを追加(_F)..." Command="{Binding AddFolderCommand}" InputGestureText="Ctrl+Shift+O"/>
-                <MenuItem Header="エクセルを追加(_E)..." Command="{Binding AddExcelCommand}"/>
+                <!-- 登録されているデータ元の種類が並ぶ（MainWindow.xaml.cs で作る） -->
+                <MenuItem x:Name="MenuAddSheet" Header="シートを追加(_A)"/>
                 <Separator/>
                 <MenuItem Header="シートを開く(_O)" Command="{Binding OpenCommand}"/>
                 <MenuItem Header="シートを削除(_R)" Command="{Binding RemoveSheetCommand}"/>
@@ -97,10 +96,8 @@
                         ToolTip="別の中間データ(.lc)のシートを、現在の内容に追加します"/>
             </ToolBar>
             <ToolBar Band="1" BandIndex="0" Header="シート">
-                <Button Style="{StaticResource ToolButton}" Content="📁 フォルダ追加" Command="{Binding AddFolderCommand}"
-                        ToolTip="管理するフォルダを登録します"/>
-                <Button Style="{StaticResource ToolButton}" Content="📊 エクセル追加" Command="{Binding AddExcelCommand}"
-                        ToolTip="エクセルファイルが入っているフォルダを登録します（キー列名は右のプロパティで指定）"/>
+                <Button x:Name="AddSheetButton" Style="{StaticResource ToolButton}" Content="＋ シート追加 ▾" Click="AddSheetButton_Click"
+                        ToolTip="データ元（エクセルファイル・エクセルフォルダなど）を選んで、シートを追加します"/>
                 <Button Style="{StaticResource ToolButton}" Content="シートを開く" Command="{Binding OpenCommand}"
                         ToolTip="選択中のシートをタブで開きます"/>
                 <Button Style="{StaticResource ToolButton}" Content="削除" Command="{Binding RemoveSheetCommand}"
@@ -193,8 +190,7 @@
                                         <MenuItem x:Name="CtxOpenFile" Header="開く(_O)" Click="CtxOpenFile_Click"/>
                                         <MenuItem x:Name="CtxCreateFile" Header="新しい中間データ(.lc)を作成(_N)..." Click="CtxCreateFile_Click"/>
                                         <MenuItem x:Name="CtxDeleteFile" Header="中間データを削除(_D)" Click="CtxDeleteFile_Click"/>
-                                        <MenuItem x:Name="CtxAddExcel" Header="エクセルを追加(_E)..." Command="{Binding AddExcelCommand}"/>
-                                        <MenuItem x:Name="CtxAddFolder" Header="フォルダを追加(_F)..." Command="{Binding AddFolderCommand}"/>
+                                        <MenuItem x:Name="CtxAddSheet" Header="シートを追加(_A)"/>
                                         <MenuItem x:Name="CtxOpenSheet" Header="シートを開く(_O)" Command="{Binding OpenCommand}"/>
                                         <MenuItem x:Name="CtxRemoveSheet" Header="シートを削除(_R)" Command="{Binding RemoveSheetCommand}"/>
                                         <Separator/>

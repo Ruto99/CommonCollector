@@ -1,4 +1,6 @@
+using System.Collections.ObjectModel;
 using System.Xml.Serialization;
+using LabelCollector.Models.Sources;
 
 namespace LabelCollector.Models;
 
@@ -6,94 +8,128 @@ namespace LabelCollector.Models;
 [XmlRoot("Workspace")]
 public class TableData
 {
+    /// <summary>今の保存形式の番号</summary>
+    public const int CurrentVersion = 4;
+
     [XmlAttribute("version")]
-    public int Version { get; set; } = 3;
+    public int Version { get; set; } = CurrentVersion;
 
     public DateTime UpdatedAt { get; set; }
 
     [XmlArray("Sheets")]
     [XmlArrayItem("Sheet")]
     public List<SheetData> Sheets { get; set; } = new();
+
+    /// <summary>以前の形式で保存されたシートを、今の形式に直す（読み込み直後に呼ぶ）</summary>
+    public void MigrateLegacy()
+    {
+        foreach (var sheet in Sheets) sheet.MigrateLegacy();
+        Version = CurrentVersion;
+    }
 }
 
-public enum SourceType
-{
-    /// <summary>フォルダ内のファイル一覧</summary>
-    Folder,
-    /// <summary>フォルダ内のエクセルファイルの行</summary>
-    Excel,
-}
-
-/// <summary>1つのデータ元（フォルダまたはエクセル）と、その表の内容</summary>
+/// <summary>
+/// 1つのシート（表）。データ元の一覧と、手入力の列と、表の内容を持つ。
+/// 表の列は「データ元から取り込む列（自動）」と「手入力の列」でできている
+/// </summary>
 public class SheetData
 {
+    /// <summary>新しいシートの手入力の列の既定名</summary>
+    public const string DefaultManualColumn = "メモ";
+
     [XmlAttribute("name")]
     public string Name { get; set; } = "";
 
+    /// <summary>手入力の列の名前</summary>
+    [XmlArray("ManualColumns")]
+    [XmlArrayItem("Column")]
+    public ObservableCollection<TextItem> ManualColumns { get; set; } = new();
+
     /// <summary>
-    /// 種類。古いXMLに残っている未対応の種類（Sqlite など）でも読み込みに失敗しないよう、文字列で保存する
+    /// データ元の一覧。種類（エクセルファイル・エクセルフォルダなど）が混ざっていてよい。
+    /// 保存時は xsi:type="ExcelFolder" のように種類の名前が付く
     /// </summary>
-    [XmlAttribute("type")]
-    public string TypeText { get; set; } = nameof(SourceType.Folder);
-
-    [XmlIgnore]
-    public SourceType Type
-    {
-        get => Enum.TryParse<SourceType>(TypeText, out var t) ? t : SourceType.Folder;
-        set => TypeText = value.ToString();
-    }
-
-    /// <summary>XMLの種類が未対応のもの（旧バージョンのDBシートなど）か</summary>
-    [XmlIgnore]
-    public bool IsUnknownType => !Enum.TryParse<SourceType>(TypeText, out _);
-
-    public string FolderPath { get; set; } = "";
-    public string FilePattern { get; set; } = "*.*";
-
-    /// <summary>エクセルの読み込み設定（プロパティウィンドウで追加する）</summary>
-    [XmlArray("ExcelSources")]
-    [XmlArrayItem("ExcelSource")]
-    public List<ExcelSourceData> ExcelSources { get; set; } = new();
+    [XmlArray("Sources")]
+    [XmlArrayItem("Source")]
+    public ObservableCollection<SourceSettings> Sources { get; set; } = new();
 
     [XmlArray("Rows")]
     [XmlArrayItem("Row")]
     public List<RowItem> Rows { get; set; } = new();
+
+    /// <summary>新しいシートを作る（手入力の列「メモ」付き）</summary>
+    public static SheetData CreateNew(string name) =>
+        new() { Name = name, ManualColumns = { new TextItem(DefaultManualColumn) } };
+
+    // ---- 以前の形式（種類ごとに決まった設定を持つシート）を読むためのもの。保存はしない ----
+
+    [XmlAttribute("type")]
+    public string? LegacyType { get; set; }
+    public bool ShouldSerializeLegacyType() => false;
+
+    [XmlElement("FolderPath")]
+    public string? LegacyFolderPath { get; set; }
+    public bool ShouldSerializeLegacyFolderPath() => false;
+
+    [XmlElement("FilePattern")]
+    public string? LegacyFilePattern { get; set; }
+    public bool ShouldSerializeLegacyFilePattern() => false;
+
+    [XmlArray("ExcelSources")]
+    [XmlArrayItem("ExcelSource")]
+    public List<LegacyExcelSource> LegacyExcelSources { get; set; } = new();
+    public bool ShouldSerializeLegacyExcelSources() => false;
+
+    /// <summary>以前の形式なら、今の形式（データ元の一覧＋手入力の列）に直す</summary>
+    internal void MigrateLegacy()
+    {
+        if (LegacyType == null) return;
+
+        if (LegacyType == "Excel")
+        {
+            foreach (var old in LegacyExcelSources)
+            {
+                var src = new ExcelFolderSourceSettings { FolderPath = old.FolderPath, IncludeSubfolders = true };
+                foreach (var k in old.KeyColumns) src.KeyColumns.Add(new TextItem(k));
+                Sources.Add(src);
+            }
+        }
+        else if (!string.IsNullOrWhiteSpace(LegacyFolderPath))
+        {
+            // フォルダ（ファイル一覧）のシート。以前の A列はファイル名だった
+            Sources.Add(new FileListSourceSettings
+            {
+                FolderPath = LegacyFolderPath,
+                FilePattern = string.IsNullOrWhiteSpace(LegacyFilePattern) ? "*.*" : LegacyFilePattern,
+                Columns = { new ColumnMapping("ファイル名") },
+            });
+        }
+        // それ以外（以前の DB のシートなど）はデータ元なし。手入力の値は残る
+
+        // 以前の B列は手入力の列「B列」に移っている
+        if (!ManualColumns.Any(c => c.Value == RowItem.LegacyManualColumn))
+            ManualColumns.Insert(0, new TextItem(RowItem.LegacyManualColumn));
+
+        LegacyType = null;
+        LegacyFolderPath = null;
+        LegacyFilePattern = null;
+        LegacyExcelSources.Clear();
+    }
 }
 
-/// <summary>エクセルの読み込み設定 1件分：どのフォルダの、どの列をキーにするか</summary>
-public class ExcelSourceData
+/// <summary>以前の形式のエクセル指定（読み込み専用）</summary>
+public class LegacyExcelSource
 {
-    /// <summary>キー列名の既定値</summary>
-    public const string DefaultKeyColumn = "ID";
-
-    /// <summary>エクセルファイルが入っているフォルダ</summary>
     public string FolderPath { get; set; } = "";
 
-    /// <summary>
-    /// キーにする列の名前（見出し行の文字）の候補。ファイルによって列名が違うことがあるので複数指定できる。
-    /// 各シートでは、この順に探して最初に見つかった列をキーにする
-    /// </summary>
     [XmlArray("KeyColumns")]
     [XmlArrayItem("Column")]
     public List<string> KeyColumns { get; set; } = new();
 
-    /// <summary>
-    /// 以前の形式（キー列名が1つだけの &lt;KeyColumn&gt;）を読むためのもの。読んだ値は KeyColumns に入る。保存はしない
-    /// </summary>
     [XmlElement("KeyColumn")]
-    public string? LegacyKeyColumn
+    public string? KeyColumn
     {
         get => null;
-        set
-        {
-            if (!string.IsNullOrWhiteSpace(value) && !KeyColumns.Contains(value)) KeyColumns.Add(value);
-        }
+        set { if (!string.IsNullOrWhiteSpace(value) && !KeyColumns.Contains(value)) KeyColumns.Add(value); }
     }
-
-    /// <summary>キー列名「ID」が入った新しい設定を作る</summary>
-    public static ExcelSourceData CreateDefault(string folderPath = "") =>
-        new() { FolderPath = folderPath, KeyColumns = { DefaultKeyColumn } };
 }
-
-/// <summary>データ元から取ってきた1件分</summary>
-public record SourceRecord(string Key, string ValueA);
