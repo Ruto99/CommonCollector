@@ -3,7 +3,9 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using AvalonDock.Layout;
 using LabelCollector.Services;
 using LabelCollector.ViewModels;
@@ -20,7 +22,8 @@ public partial class MainWindow : Window
         DataContext = _vm;
 
         // LayoutAnchorable の中身は DataContext を引き継がないので明示的に渡す
-        SheetList.DataContext = _vm;
+        ExplorerTree.DataContext = _vm;
+        PropertyView.DataContext = _vm;
         LogGrid.ItemsSource = AppLogger.Instance.Entries;
 
         // 新しいログが出たら最下行まで自動スクロール
@@ -30,6 +33,16 @@ public partial class MainWindow : Window
         LogAnchorable.IsVisibleChanged += (_, _) => LogToggle.IsChecked = LogAnchorable.IsVisible;
 
         _vm.ActivateRequested += Activate;
+
+        // 「シートを追加」のメニューに、登録されているデータ元の種類を並べる
+        FillAddSheetMenu(MenuAddSheet);
+        FillAddSheetMenu(CtxAddSheet);
+
+        // タブを切り替えたら、そのシートをプロパティに表示する
+        Dock.ActiveContentChanged += (_, _) =>
+        {
+            if (Dock.ActiveContent is SheetViewModel sheet) _vm.ShowSheetProperties(sheet);
+        };
     }
 
     private void LogEntries_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -44,6 +57,27 @@ public partial class MainWindow : Window
         else LogAnchorable.Hide();
     }
 
+    // ---- シートの追加 ----
+
+    /// <summary>メニューの下に、データ元の種類ごとの「シートを追加」を並べる</summary>
+    private void FillAddSheetMenu(ItemsControl parent)
+    {
+        parent.Items.Clear();
+        foreach (var kind in DataSourceRegistry.Kinds)
+        {
+            var item = new MenuItem { Header = $"{kind.Icon} {kind.DisplayName}..." };
+            item.Click += (_, _) => _vm.AddSheet(kind);
+            parent.Items.Add(item);
+        }
+    }
+
+    private void AddSheetButton_Click(object sender, RoutedEventArgs e)
+    {
+        var menu = new ContextMenu { PlacementTarget = AddSheetButton, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom };
+        FillAddSheetMenu(menu);
+        menu.IsOpen = true;
+    }
+
     // ---- メニュー ----
 
     private void Exit_Click(object sender, RoutedEventArgs e) => Close();
@@ -53,6 +87,7 @@ public partial class MainWindow : Window
     {
         if (!ReferenceEquals(e.OriginalSource, sender)) return;
         MenuShowSheets.IsChecked = SheetsAnchorable.IsVisible;
+        MenuShowProperties.IsChecked = PropertiesAnchorable.IsVisible;
         MenuShowLog.IsChecked = LogAnchorable.IsVisible;
         MenuShowToolbar.IsChecked = MainToolBarTray.Visibility == Visibility.Visible;
     }
@@ -60,6 +95,11 @@ public partial class MainWindow : Window
     private void MenuShowSheets_Click(object sender, RoutedEventArgs e)
     {
         if (SheetsAnchorable.IsVisible) SheetsAnchorable.Hide(); else SheetsAnchorable.Show();
+    }
+
+    private void MenuShowProperties_Click(object sender, RoutedEventArgs e)
+    {
+        if (PropertiesAnchorable.IsVisible) PropertiesAnchorable.Hide(); else PropertiesAnchorable.Show();
     }
 
     private void MenuShowLog_Click(object sender, RoutedEventArgs e)
@@ -78,8 +118,8 @@ public partial class MainWindow : Window
         var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
         MessageBox.Show(this,
             $"LabelCollector  Version {version?.ToString(3)}\n\n" +
-            "フォルダやローカルDBのデータを集めて表にまとめ、手入力の列を行に結びつけて管理します。\n\n" +
-            $"中間データ: {_vm.XmlPath}\nログ: {AppLogger.Instance.LogDirectory}",
+            "フォルダやエクセルのデータを集めて表にまとめ、手入力の列を行に結びつけて管理します。\n\n" +
+            $"中間データ: {_vm.FilePath}\nログ: {AppLogger.Instance.LogDirectory}",
             "バージョン情報", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
@@ -108,10 +148,126 @@ public partial class MainWindow : Window
         }, System.Windows.Threading.DispatcherPriority.Background);
     }
 
-    private void SheetList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    // ---- 左のエクスプローラー ----
+
+    private object? SelectedTreeItem => ExplorerTree.SelectedItem;
+
+    private void ExplorerTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
-        if (SheetList.SelectedItem is SheetViewModel sheet) _vm.OpenSheet(sheet);
+        // 選んだものを右のプロパティに表示する（中間データならその中身、シートならその設定）
+        switch (e.NewValue)
+        {
+            case SheetViewModel sheet:
+                _vm.ShowSheetProperties(sheet);
+                break;
+            case DataFileNode file:
+                _vm.ShowFileProperties(file.FullPath);
+                break;
+            case FolderNode:
+                _vm.ClearProperties();
+                break;
+            // null（ツリーを読み直したときなど）は、表示をそのままにする
+        }
     }
+
+    // ダブルクリック：シートならタブで開く、中間データ(.lc)なら開いて入れ替える
+    private void ExplorerTree_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (ItemUnderMouse(e) is not { } item) return;
+        switch (item.DataContext)
+        {
+            case SheetViewModel sheet:
+                _vm.OpenSheet(sheet);
+                e.Handled = true;
+                break;
+            case DataFileNode xml when !xml.IsCurrent:
+                _vm.OpenDataFile(xml.FullPath);
+                e.Handled = true;
+                break;
+        }
+    }
+
+    // 右クリックでも項目を選択する（標準の TreeView は左クリックでしか選択しない）
+    private void ExplorerTree_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (ItemUnderMouse(e) is { } item)
+        {
+            item.IsSelected = true;
+            item.Focus();
+        }
+    }
+
+    private TreeViewItem? ItemUnderMouse(MouseEventArgs e)
+    {
+        var d = e.OriginalSource as DependencyObject;
+        while (d != null && d is not TreeViewItem)
+            d = d is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d);
+        return d as TreeViewItem;
+    }
+
+    // 選んでいる項目の種類に合わせて、右クリックメニューの項目を出し分ける
+    private void ExplorerTree_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        var item = SelectedTreeItem;
+        var xml = item as DataFileNode;
+        var isFolder = item is FolderNode || item == null;
+        var isSheet = item is SheetViewModel;
+
+        SetVisible(CtxOpenFile, xml is { IsCurrent: false });
+        SetVisible(CtxCreateFile, isFolder || xml != null);
+        SetVisible(CtxDeleteFile, xml != null);
+        CtxDeleteFile.IsEnabled = xml is { IsCurrent: false };
+        SetVisible(CtxAddSheet, xml is { IsCurrent: true });
+        SetVisible(CtxOpenSheet, isSheet);
+        SetVisible(CtxRemoveSheet, isSheet);
+    }
+
+    private static void SetVisible(UIElement element, bool visible) =>
+        element.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>選んでいる項目があるフォルダ（未選択なら作業フォルダ）</summary>
+    private string SelectedFolder => SelectedTreeItem switch
+    {
+        ExplorerNode node => node.FolderPath,
+        _ => _vm.Explorer.RootPath,
+    };
+
+    private void CtxOpenFile_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedTreeItem is DataFileNode xml) _vm.OpenDataFile(xml.FullPath);
+    }
+
+    private void CtxCreateFile_Click(object sender, RoutedEventArgs e)
+    {
+        var folder = SelectedFolder;
+        var name = InputDialog.Show(this, "新しい中間データ(.lc)を作成",
+            $"作成するファイルの名前を入力してください（拡張子 .lc は自動で付きます）。\n作成先: {folder}",
+            "新しい中間データ" + LcFileStore.Extension);
+        if (name != null) _vm.CreateDataFile(folder, name);
+    }
+
+    private void CtxDeleteFile_Click(object sender, RoutedEventArgs e)
+    {
+        if (SelectedTreeItem is DataFileNode xml) _vm.DeleteDataFile(xml.FullPath);
+    }
+
+    private void CtxShowInExplorer_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            // ファイルなら、そのファイルを選んだ状態で開く
+            var psi = SelectedTreeItem is DataFileNode xml
+                ? new ProcessStartInfo("explorer.exe", $"/select,\"{xml.FullPath}\"")
+                : new ProcessStartInfo(SelectedFolder) { UseShellExecute = true };
+            Process.Start(psi);
+        }
+        catch (Exception ex)
+        {
+            AppLogger.Instance.Error("エクスプローラーで開けませんでした: " + ex.Message);
+        }
+    }
+
+    private void CtxReload_Click(object sender, RoutedEventArgs e) => _vm.Explorer.Reload();
 
     protected override void OnClosing(CancelEventArgs e)
     {

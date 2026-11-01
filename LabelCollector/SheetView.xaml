@@ -2,78 +2,20 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              MinWidth="520">
-    <UserControl.Resources>
-        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
-        <Style TargetType="TextBox">
-            <Setter Property="Margin" Value="0,2"/>
-            <Setter Property="Padding" Value="3,2"/>
-            <Setter Property="VerticalContentAlignment" Value="Center"/>
-        </Style>
-        <Style x:Key="FieldLabel" TargetType="TextBlock">
-            <Setter Property="VerticalAlignment" Value="Center"/>
-            <Setter Property="Margin" Value="0,0,8,0"/>
-        </Style>
-    </UserControl.Resources>
     <DockPanel Margin="6">
-
-        <!-- データ元の設定 -->
-        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,4">
-
-            <!-- 名前 + 更新 -->
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="64"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Text="名前" Style="{StaticResource FieldLabel}"/>
-                <TextBox Grid.Column="1" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"
-                         LostFocus="Setting_LostFocus"/>
-                <Button Grid.Column="2" Content="更新" Command="{Binding RefreshCommand}"
-                        Margin="8,2,0,2" Padding="18,3" MinWidth="72"/>
-            </Grid>
-
-            <!-- フォルダ -->
-            <Grid Visibility="{Binding IsFolder, Converter={StaticResource BoolToVis}}">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="64"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="150"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Text="フォルダ" Style="{StaticResource FieldLabel}"/>
-                <TextBox Grid.Column="1" Text="{Binding FolderPath}" LostFocus="Setting_LostFocus"/>
-                <TextBlock Grid.Column="2" Text="パターン" Style="{StaticResource FieldLabel}" Margin="12,0,8,0"/>
-                <TextBox Grid.Column="3" Text="{Binding FilePattern}" LostFocus="Setting_LostFocus"/>
-            </Grid>
-
-            <!-- DB -->
-            <Grid Visibility="{Binding IsDb, Converter={StaticResource BoolToVis}}">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="64"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-                <TextBlock Text="DB" Style="{StaticResource FieldLabel}"/>
-                <TextBox Grid.Column="1" Text="{Binding DbPath}" LostFocus="Setting_LostFocus"/>
-                <TextBlock Grid.Row="1" Text="SQL" Style="{StaticResource FieldLabel}"/>
-                <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding DbQuery}" LostFocus="Setting_LostFocus"
-                         ToolTip="1列目＝キー、2列目＝A列"/>
-            </Grid>
-        </StackPanel>
 
         <!-- 下部：状態表示 -->
         <DockPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
             <Button DockPanel.Dock="Right" Content="消えた行を削除" Command="{Binding RemoveMissingCommand}"
                     Padding="12,3" Margin="8,0,0,0"/>
+            <Button DockPanel.Dock="Right" Content="更新" Command="{Binding RefreshCommand}"
+                    Padding="18,3" Margin="8,0,0,0" MinWidth="72"
+                    ToolTip="全データ元を読み直します（設定は右のプロパティウィンドウ）"/>
             <TextBlock Text="{Binding Status}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
         </DockPanel>
 
         <!-- 表 -->
-        <DataGrid ItemsSource="{Binding Rows}" AutoGenerateColumns="False" Margin="0,6,0,0"
+        <DataGrid x:Name="Table" ItemsSource="{Binding Rows}" AutoGenerateColumns="False"
                   CanUserAddRows="False" CanUserDeleteRows="False"
                   CellEditEnding="DataGrid_CellEditEnding">
             <DataGrid.RowStyle>
@@ -89,15 +31,7 @@
                     </Style.Triggers>
                 </Style>
             </DataGrid.RowStyle>
-            <DataGrid.Columns>
-                <DataGridTextColumn Header="状態" Binding="{Binding State}" IsReadOnly="True" MinWidth="70" Width="70"/>
-                <DataGridTextColumn Header="キー" Binding="{Binding Key}" IsReadOnly="True" MinWidth="140" Width="2*"/>
-                <DataGridTextColumn Header="A列（自動）" Binding="{Binding ColumnA}" IsReadOnly="True" MinWidth="120" Width="2*"/>
-                <DataGridTextColumn Header="B列（手動）"
-                                    Binding="{Binding ColumnB, UpdateSourceTrigger=PropertyChanged}" MinWidth="160" Width="3*"/>
-                <DataGridTextColumn Header="最終確認" Binding="{Binding LastSeen, StringFormat=yyyy/MM/dd HH:mm}"
-                                    IsReadOnly="True" MinWidth="130" Width="130"/>
-            </DataGrid.Columns>
+            <!-- 列はシートの設定（データ元の取り込む列・手入力の列）から SheetView.xaml.cs で作る -->
         </DataGrid>
     </DockPanel>
 </UserControl>
