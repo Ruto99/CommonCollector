@@ -30,6 +30,9 @@ public abstract class SourceSettings : ObservableObject
 public abstract class TableSourceSettings : SourceSettings
 {
     private string _sheetName = "";
+    private int _headerRow;
+    private int _headerRowCount = 1;
+    private bool _fillMergedCells = true;
 
     /// <summary>
     /// キーにする列の名前（見出し行の文字）の候補。ファイルによって列名が違うことがあるので複数指定できる。
@@ -41,6 +44,23 @@ public abstract class TableSourceSettings : SourceSettings
 
     /// <summary>読むシートの名前。空なら全シート（キー列が見つかるシートだけ読む）</summary>
     public string SheetName { get => _sheetName; set => Set(ref _sheetName, value); }
+
+    /// <summary>
+    /// 見出しの行（1始まり）。0 なら自動：上から20行以内で、キー列名が見つかる行を探す
+    /// </summary>
+    public int HeaderRow { get => _headerRow; set => Set(ref _headerRow, Math.Max(0, value)); }
+
+    /// <summary>
+    /// 見出しの行数。2 以上なら、上の行を大項目として「大項目/列名」の形の列名にする（例：数量/入庫）。
+    /// 下の段の名前だけ（例：入庫）でも、ほかの列と重ならなければ指定できる
+    /// </summary>
+    public int HeaderRowCount { get => _headerRowCount; set => Set(ref _headerRowCount, Math.Clamp(value, 1, 10)); }
+
+    /// <summary>
+    /// データ行の結合セルの値を、結合範囲のすべてのセルに入れるか（縦に結合された値を下の行にも入れる）。
+    /// 見出しの結合セルは、この設定によらず常に埋める
+    /// </summary>
+    public bool FillMergedCells { get => _fillMergedCells; set => Set(ref _fillMergedCells, value); }
 
     /// <summary>空欄を除いたキー列名の候補</summary>
     public List<string> GetKeyColumnNames() =>

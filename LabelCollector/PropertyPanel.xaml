@@ -84,6 +84,30 @@
                              ToolTip="読むシートの名前。空なら全シート（キー列が見つかるシートだけ読む）"/>
                 </Grid>
 
+                <!-- 見出しの位置と段数・結合セル -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="70"/>
+                        <ColumnDefinition Width="50"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="見出しの行" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Grid.Column="1" Text="{Binding HeaderRow}" LostFocus="Setting_LostFocus" HorizontalContentAlignment="Right"
+                             ToolTip="見出しが始まる行（1行目なら 1）。0 なら自動：上から20行以内でキー列名が見つかる行を、見出しの一番下の段とみなします"/>
+                    <TextBlock Grid.Column="2" Text="行目から（0 = 自動）" Style="{StaticResource EmptyHint}" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                    <TextBlock Grid.Row="1" Text="見出しの段数" Style="{StaticResource FieldLabel}"/>
+                    <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding HeaderRowCount}" LostFocus="Setting_LostFocus" HorizontalContentAlignment="Right"
+                             ToolTip="1行目が大項目、2行目が列名のような見出しなら 2。列名は「大項目/列名」（例：数量/入庫）になります"/>
+                    <TextBlock Grid.Row="1" Grid.Column="2" Text="行（2 以上で「大項目/列名」）" Style="{StaticResource EmptyHint}" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                </Grid>
+                <CheckBox Content="結合セルの値を、結合範囲のすべての行に入れる" IsChecked="{Binding FillMergedCells}"
+                          Click="Setting_Changed" Margin="0,4,0,0"
+                          ToolTip="縦に結合されたセル（例：同じ名称が2行にまたがる）の値を、下の行にも入れます。見出しの結合セルは常に列ごとに分けて扱います"/>
+
                 <TextBlock Text="キー列名（上から順に探す）" Style="{StaticResource SubHeader}"/>
                 <ItemsControl ItemsSource="{Binding KeyColumns}">
                     <ItemsControl.ItemTemplate>
