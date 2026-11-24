@@ -46,6 +46,7 @@ public class SheetViewModel : INotifyPropertyChanged
         Data = data;
         _requestSave = requestSave;
         foreach (var r in data.Rows) Rows.Add(r);
+        InferPlaces();
 
         RefreshCommand = new RelayCommand(Refresh);
         RemoveMissingCommand = new RelayCommand(RemoveMissing);
@@ -175,6 +176,55 @@ public class SheetViewModel : INotifyPropertyChanged
         if (tabs.Select(t => t.Signature).SequenceEqual(Tabs.Select(t => t.Signature))) return;
         Tabs = tabs;
         TabsChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// 読んだ場所（Places）が無い行（以前の .lc の行）は、取得元の文字（「ファイル / シート名」）から
+    /// どのデータ元のどのファイルの行かを推定する。推定できない行は「（未分類）」タブに出る
+    /// </summary>
+    private void InferPlaces()
+    {
+        foreach (var row in Rows.Where(r => r.Places.Count == 0))
+        {
+            var places = new List<RowPlace>();
+            foreach (var part in row.Origin.Split(" ; ", StringSplitOptions.RemoveEmptyEntries))
+            {
+                // エクセルは「ファイル / シート名」、フォルダのファイル一覧は相対パスだけ（ファイル名に / は使えない）
+                var sep = part.IndexOf(" / ", StringComparison.Ordinal);
+                var file = (sep >= 0 ? part[..sep] : part).Trim();
+                if (file.Length == 0) continue;
+                if (FindSourceOf(file, isExcel: sep >= 0) is { } place && !places.Contains(place)) places.Add(place);
+            }
+            if (places.Count > 0) row.Places = places;
+        }
+    }
+
+    /// <summary>取得元のファイルから、読んだデータ元を探す。見つからなければ null</summary>
+    private RowPlace? FindSourceOf(string file, bool isExcel)
+    {
+        // ファイルが今もあるデータ元を優先する
+        foreach (var source in Sources)
+        {
+            switch (source)
+            {
+                case ExcelFolderSourceSettings f when isExcel && ExistsIn(f.FolderPath, file):
+                    return new RowPlace(source.Id, file);
+                case ExcelFileSourceSettings f when isExcel && string.Equals(Path.GetFileName(f.FilePath), file, StringComparison.OrdinalIgnoreCase):
+                    return new RowPlace(source.Id, file);
+                case FileListSourceSettings f when !isExcel && ExistsIn(f.FolderPath, file):
+                    return new RowPlace(source.Id, "");
+            }
+        }
+
+        // ファイルが消えている（消えた行など）ときは、同じ種類のデータ元が1つだけならそれとみなす
+        var candidates = Sources.Where(s => isExcel ? s is ExcelFolderSourceSettings : s is FileListSourceSettings).ToList();
+        return candidates.Count == 1 ? new RowPlace(candidates[0].Id, isExcel ? file : "") : null;
+    }
+
+    private static bool ExistsIn(string folder, string relative)
+    {
+        try { return folder.Length > 0 && File.Exists(Path.Combine(folder, relative)); }
+        catch { return false; } // パスに使えない文字など
     }
 
     // ---- データ元の追加・削除 ----
