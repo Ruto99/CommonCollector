@@ -103,7 +103,9 @@ public partial class SheetView : UserControl
             // 列名は "Auto[品名]" のように行の値へバインドする
             var path = (column.IsManual ? "Manual" : "Auto") + "[" + EscapeIndexer(column.Name) + "]";
             var header = column.IsManual ? column.Name + "（手入力）" : column.Name;
-            grid.Columns.Add(TextColumn(header, path, readOnly: !column.IsManual, star: column.IsManual ? 2 : 1.5));
+            var textColumn = TextColumn(header, path, readOnly: !column.IsManual, star: column.IsManual ? 2 : 1.5);
+            if (column.IsManual) textColumn.CellStyle = ManualCellStyle(path);
+            grid.Columns.Add(textColumn);
         }
 
         grid.Columns.Add(TextColumn("取得元", "Origin", readOnly: true, star: 1.5));
@@ -125,6 +127,23 @@ public partial class SheetView : UserControl
             MinWidth = width > 0 ? width : 80,
             Width = width > 0 ? new DataGridLength(width) : new DataGridLength(star, DataGridLengthUnitType.Star),
         };
+    }
+
+    /// <summary>
+    /// 手入力の列のセル：何も入力されていないときは赤い枠で囲む（入力すると消える）。
+    /// 枠の太さは DataGridCell の既定（1）のままにして、色だけ変えるので、編集中も大きさは変わらない
+    /// </summary>
+    private Style ManualCellStyle(string path)
+    {
+        var style = new Style(typeof(DataGridCell), (Style)FindResource(typeof(DataGridCell)));
+        var brush = (Brush)FindResource("EmptyManualCellBrush");
+        foreach (var empty in new object?[] { "", null })
+        {
+            var trigger = new DataTrigger { Binding = new Binding(path), Value = empty };
+            trigger.Setters.Add(new Setter(Control.BorderBrushProperty, brush));
+            style.Triggers.Add(trigger);
+        }
+        return style;
     }
 
     /// <summary>バインドのパスの [ ] の中では , [ ] ^ などに ^ を付ける</summary>
