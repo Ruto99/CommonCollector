@@ -18,6 +18,19 @@
 
         <!-- 手入力の列で、まだ何も入力されていないセルの枠の色（SheetView.xaml.cs の ManualCellStyle で使う） -->
         <SolidColorBrush x:Key="EmptyManualCellBrush" Color="#E53935"/>
+
+        <!-- 手入力の列のセル：右端の ▾ で、値の一覧をセルの下に開く（SheetView.xaml.cs の CreateGrid で使う） -->
+        <ControlTemplate x:Key="MultiValueCellTemplate" TargetType="DataGridCell">
+            <Border BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                    Background="{TemplateBinding Background}" SnapsToDevicePixels="True">
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Content="▾" Click="MultiValueButton_Click" Focusable="False"
+                            Padding="4,0" BorderThickness="0" Background="Transparent" Foreground="Gray" Cursor="Hand"
+                            ToolTip="値を複数入力する一覧を開きます（Alt+↓）"/>
+                    <ContentPresenter SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" VerticalAlignment="Center"/>
+                </DockPanel>
+            </Border>
+        </ControlTemplate>
     </UserControl.Resources>
     <DockPanel Margin="6">
 

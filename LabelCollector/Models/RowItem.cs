@@ -68,6 +68,37 @@ public class RowItem : ObservableObject
     [XmlIgnore]
     public CellAccessor Manual => _manual ??= new CellAccessor(() => ManualCells);
 
+    /// <summary>
+    /// 画面用：手入力の列のセル（どの手入力の列も複数の値を入れられる）。ManualList["部品"] は「A / B / C（3件）」のような文字になる。
+    /// 値が1つ以下なら、セルに直接入力して書き換えられる。値の一覧は GetManualValues / SetManualValues で読み書きする
+    /// </summary>
+    [XmlIgnore]
+    public MultiValueAccessor ManualList => _manualList ??= new MultiValueAccessor(GetManualValues, SetManualValues);
+    private MultiValueAccessor? _manualList;
+
+    /// <summary>
+    /// 手入力の列の値の一覧。値ごとに &lt;Cell column="列名"&gt; を1つずつ持つ。
+    /// 以前の1つの値も、そのまま1つ目の値として読める
+    /// </summary>
+    public IReadOnlyList<string> GetManualValues(string column) =>
+        ManualCells.Where(c => c.Column == column && c.Value.Length > 0).Select(c => c.Value).ToList();
+
+    /// <summary>手入力の列の値の一覧を入れ替える。変わったら true</summary>
+    public bool SetManualValues(string column, IReadOnlyList<string> values)
+    {
+        if (GetManualValues(column).SequenceEqual(values)) return false;
+
+        // 元の位置（最初の値があったところ）に入れ直す。無ければ末尾
+        var at = ManualCells.FindIndex(c => c.Column == column);
+        ManualCells.RemoveAll(c => c.Column == column);
+        if (at < 0 || at > ManualCells.Count) at = ManualCells.Count;
+        ManualCells.InsertRange(at, values.Select(v => new CellValue(column, v)));
+
+        Manual.NotifyAllChanged();
+        ManualList.NotifyAllChanged();
+        return true;
+    }
+
     /// <summary>自動の列の値をまとめて入れ替える。変わったら true</summary>
     public bool SetAutoValues(IReadOnlyDictionary<string, string> values)
     {
@@ -100,6 +131,7 @@ public class RowItem : ObservableObject
         {
             ManualCells = other.ManualCells;
             Manual.NotifyAllChanged();
+            ManualList.NotifyAllChanged();
         }
     }
 
@@ -189,6 +221,42 @@ public class CellAccessor(Func<List<CellValue>> cells) : INotifyPropertyChanged
     }
 
     /// <summary>値が変わったことを画面に知らせる（列名で指定しているバインドすべて）</summary>
+    public void NotifyAllChanged() =>
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("Item[]"));
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+}
+
+/// <summary>
+/// 手入力の列（複数の値を入れられる）を、表のセルで読み書きする窓口。
+/// 画面からは "ManualList[部品]" のように列名でバインドする
+/// </summary>
+public class MultiValueAccessor(Func<string, IReadOnlyList<string>> values,
+                                Func<string, IReadOnlyList<string>, bool> setValues) : INotifyPropertyChanged
+{
+    /// <summary>
+    /// 読み：値が無ければ ""、1つならその値、2つ以上なら「A / B / C（3件）」。
+    /// 書き：値が1つ以下のときだけ（セルに直接入力したとき）。空なら値なし。
+    /// 2つ以上あるときはセルでは編集させず、値の一覧で編集する
+    /// </summary>
+    public string this[string column]
+    {
+        get => Format(values(column));
+        set
+        {
+            if (values(column).Count > 1) return;
+            var v = (value ?? "").Trim();
+            setValues(column, v.Length > 0 ? [v] : []);
+        }
+    }
+
+    public static string Format(IReadOnlyList<string> list) => list.Count switch
+    {
+        0 => "",
+        1 => list[0],
+        _ => $"{string.Join(" / ", list)}（{list.Count}件）",
+    };
+
     public void NotifyAllChanged() =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("Item[]"));
 
