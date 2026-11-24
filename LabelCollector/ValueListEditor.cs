@@ -22,7 +22,6 @@ public class ValueListEditor : Border
         Foreground = Brushes.Firebrick, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0),
         Visibility = Visibility.Collapsed,
     };
-    private readonly Brush _normalBorder = new TextBox().BorderBrush;
     private static readonly Brush DuplicateBackground = new SolidColorBrush(Color.FromRgb(0xFF, 0xEB, 0xEE));
 
     private readonly Popup _popup;
@@ -240,9 +239,17 @@ public class ValueListEditor : Border
         foreach (var b in boxes)
         {
             // 入力中の欄は枠の色がテーマの色になるので、背景の色でも分かるようにする
-            var dup = duplicates.Contains(b.Text.Trim());
-            b.BorderBrush = dup ? Brushes.Red : _normalBorder;
-            b.Background = dup ? DuplicateBackground : Brushes.White;
+            if (duplicates.Contains(b.Text.Trim()))
+            {
+                b.BorderBrush = Brushes.Red;
+                b.Background = DuplicateBackground;
+            }
+            else
+            {
+                // テーマの既定の枠・背景に戻す（画面に出す前の TextBox の BorderBrush は既定の色になっていないので、それは使わない）
+                b.ClearValue(Control.BorderBrushProperty);
+                b.ClearValue(Control.BackgroundProperty);
+            }
         }
 
         _error.Text = duplicates.Count > 0 ? $"同じ値が2回以上入っています：{string.Join("、", duplicates)}" : "";
