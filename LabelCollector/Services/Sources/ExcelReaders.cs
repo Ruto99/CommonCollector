@@ -43,7 +43,8 @@ public class ExcelFolderReader(ExcelFolderSourceSettings settings) : IDataSource
         {
             try
             {
-                table.ReadFile(file, Path.GetRelativePath(settings.FolderPath, file), list);
+                var relative = Path.GetRelativePath(settings.FolderPath, file);
+                table.ReadFile(file, relative, list);
             }
             catch (Exception ex)
             {
@@ -116,7 +117,7 @@ internal class ExcelTable
         Extensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase)
         && !Path.GetFileName(path).StartsWith("~$"); // エクセルで開いている間にできる一時ファイル
 
-    /// <summary>1ファイルを読んで list に足す</summary>
+    /// <summary>1ファイルを読んで list に足す。displayName は取得元に出すファイル名（フォルダのデータ元なら相対パス）</summary>
     public void ReadFile(string file, string displayName, List<SourceRecord> list)
     {
         foreach (var sheet in ReadSheets(file))
@@ -144,7 +145,7 @@ internal class ExcelTable
 
                 var values = new Dictionary<string, string>();
                 foreach (var (name, index) in columnIndex) values[name] = Cell(row, index);
-                list.Add(new SourceRecord(key, origin, values));
+                list.Add(new SourceRecord(key, origin, values, displayName));
             }
         }
     }

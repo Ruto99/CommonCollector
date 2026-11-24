@@ -19,11 +19,12 @@ public class RecordCombiner
     {
         public string Key { get; } = key;
         public List<string> Origins { get; } = new();
+        public List<RowPlace> Places { get; } = new();
         public Dictionary<string, string> Values { get; } = new();
     }
 
-    /// <summary>1つのデータ元から読んだ行を足す</summary>
-    public void Add(IEnumerable<SourceRecord> records)
+    /// <summary>1つのデータ元から読んだ行を足す。sourceId はデータ元の ID（SourceSettings.Id）</summary>
+    public void Add(IEnumerable<SourceRecord> records, string sourceId = "")
     {
         var inThisSource = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         foreach (var rec in records)
@@ -42,6 +43,8 @@ public class RecordCombiner
                 _entries.Add(entry);
             }
             if (!entry.Origins.Contains(rec.Origin)) entry.Origins.Add(rec.Origin);
+            var place = new RowPlace(sourceId, rec.File);
+            if (!entry.Places.Contains(place)) entry.Places.Add(place);
             foreach (var (column, value) in rec.Values)
             {
                 // 同じ列は先に読んだデータ元を優先。ただし空なら後の値で埋める
@@ -56,5 +59,5 @@ public class RecordCombiner
 
     /// <summary>まとめた結果（最初に現れた順）</summary>
     public List<SourceRecord> ToRecords() =>
-        _entries.Select(e => new SourceRecord(e.Key, string.Join(" ; ", e.Origins), e.Values)).ToList();
+        _entries.Select(e => new SourceRecord(e.Key, string.Join(" ; ", e.Origins), e.Values) { Places = e.Places }).ToList();
 }

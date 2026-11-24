@@ -36,13 +36,14 @@ public static class RowMerger
                 if (row.Origin != rec.Origin) changed = true;
                 if (changed) updated++;
                 row.Origin = rec.Origin;
+                row.Places = rec.Places.ToList();
                 row.State = RowState.Normal;
                 row.LastSeen = now;
                 result.Add(row);
             }
             else
             {
-                var newRow = new RowItem { Key = rec.Key, Origin = rec.Origin, State = RowState.New, LastSeen = now };
+                var newRow = new RowItem { Key = rec.Key, Origin = rec.Origin, Places = rec.Places.ToList(), State = RowState.New, LastSeen = now };
                 newRow.SetAutoValues(rec.Values);
                 result.Add(newRow);
                 added++;

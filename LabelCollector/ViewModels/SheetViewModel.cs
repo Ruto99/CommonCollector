@@ -1,14 +1,28 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.IO;
 using System.Windows.Input;
 using LabelCollector.Models;
+using LabelCollector.Models.Sources;
 using LabelCollector.Services;
 
 namespace LabelCollector.ViewModels;
 
 /// <summary>表の列 1つ分</summary>
 public record SheetColumn(string Name, bool IsManual);
+
+/// <summary>
+/// シートの画面のタブ 1つ分。エクセルのデータ元なら、親のタブはデータ元のフォルダ、子のタブ（Children）は取得元のファイルごと。
+/// 子のタブがあれば、親のタブは子のタブを並べ、無ければ Filter に合う行の表を出す
+/// </summary>
+public record SheetTab(string Id, string Header, string ToolTip, Func<RowItem, bool> Filter,
+                       IReadOnlyList<SheetColumn> Columns, IReadOnlyList<SheetTab> Children)
+{
+    /// <summary>タブを作り直すかどうかの判定用（Filter は比べない）</summary>
+    public string Signature =>
+        $"{Id}|{Header}|{ToolTip}|{string.Join(",", Columns)}|[{string.Join(";", Children.Select(c => c.Signature))}]";
+}
 
 /// <summary>1つのシート（表）。データ元の一覧から行を集め、手入力の列と一緒に管理する</summary>
 public class SheetViewModel : INotifyPropertyChanged
@@ -36,7 +50,11 @@ public class SheetViewModel : INotifyPropertyChanged
         RefreshCommand = new RelayCommand(Refresh);
         RemoveMissingCommand = new RelayCommand(RemoveMissing);
 
-        Sources.CollectionChanged += (_, _) => OnPropertyChanged(nameof(Icon));
+        Sources.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(Icon));
+            UpdateColumns();
+        };
         UpdateColumns();
     }
 
@@ -72,9 +90,91 @@ public class SheetViewModel : INotifyPropertyChanged
                           .Concat(manual.Select(n => new SheetColumn(n, true)))
                           .ToList();
 
-        if (columns.SequenceEqual(Columns)) return;
-        Columns = columns;
-        ColumnsChanged?.Invoke();
+        if (!columns.SequenceEqual(Columns))
+        {
+            Columns = columns;
+            ColumnsChanged?.Invoke();
+        }
+        UpdateTabs();
+    }
+
+    // ---- 画面のタブ（親：フォルダ、子：ファイル） ----
+
+    /// <summary>データ元を読んでいない行（以前の .lc の行など）を出すタブの ID</summary>
+    private const string UnsortedTabId = "*unsorted";
+
+    /// <summary>
+    /// 画面のタブ。エクセルのデータ元なら、親のタブはデータ元のフォルダ、子のタブは取得元のファイルごと（サブフォルダのファイルも同じ段に並べる）。
+    /// ファイルを持たないデータ元（フォルダのファイル一覧など）は、データ元ごとに1つのタブ
+    /// </summary>
+    public IReadOnlyList<SheetTab> Tabs { get; private set; } = [];
+
+    /// <summary>画面で選んでいるタブ（親のタブの ID → 選んでいる子のタブの ID。一番上は ""）。保存はしない</summary>
+    public Dictionary<string, string> SelectedTabs { get; } = new();
+
+    /// <summary>タブの構成が変わった（画面のタブを作り直す）</summary>
+    public event Action? TabsChanged;
+
+    /// <summary>データ元・行の場所から、タブを作り直す。構成が変わったときだけ TabsChanged を出す</summary>
+    public void UpdateTabs()
+    {
+        var manual = Columns.Where(c => c.IsManual).ToList();
+        var tabs = new List<SheetTab>();
+        foreach (var source in Sources)
+        {
+            var id = source.Id;
+            var targets = source.Columns.Select(m => m.TargetName).ToHashSet();
+            var columns = Columns.Where(c => !c.IsManual && targets.Contains(c.Name)).Concat(manual).ToList();
+            var kind = DataSourceRegistry.Find(source);
+
+            // 親のタブにするフォルダ（エクセルフォルダはそのフォルダ、エクセルファイルはファイルのあるフォルダ）
+            var baseFolder = source switch
+            {
+                ExcelFolderSourceSettings f => f.FolderPath,
+                ExcelFileSourceSettings f => Path.GetDirectoryName(f.FilePath) ?? "",
+                _ => null,
+            };
+            if (baseFolder == null)
+            {
+                tabs.Add(new SheetTab(id, $"{kind?.Icon ?? "📋"} {SourceEditing.SuggestName(source, kind?.DisplayName ?? "データ元")}",
+                                      $"{kind?.DisplayName ?? source.GetType().Name}: {source.Location}",
+                                      r => r.Places.Any(p => p.SourceId == id), columns, []));
+                continue;
+            }
+
+            // 取得元のファイル（直下を先に、サブフォルダを後に、名前順）。サブフォルダのファイルも区別せず1段に並べる
+            var files = Rows.SelectMany(r => r.Places).Where(p => p.SourceId == id && p.File.Length > 0)
+                            .Select(p => p.File).Distinct(StringComparer.OrdinalIgnoreCase)
+                            .OrderBy(f => f.Count(c => c is '\\' or '/')).ThenBy(f => f, StringComparer.OrdinalIgnoreCase)
+                            .ToList();
+            // 別のフォルダに同じ名前のファイルがあるときだけ、見出しを相対パスにする
+            var sameNames = files.GroupBy(f => Path.GetFileName(f), StringComparer.OrdinalIgnoreCase)
+                                 .Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var children = files.Select(file => new SheetTab(
+                Id: $"{id}|{file}",
+                Header: $"📗 {(sameNames.Contains(Path.GetFileName(file)) ? file : Path.GetFileName(file))}",
+                ToolTip: Path.Combine(baseFolder, file),
+                Filter: r => r.Places.Any(p => p.SourceId == id && string.Equals(p.File, file, StringComparison.OrdinalIgnoreCase)),
+                Columns: columns, Children: [])).ToList();
+
+            var baseName = Path.GetFileName(baseFolder.TrimEnd('\\', '/'));
+            tabs.Add(new SheetTab(id, $"📂 {(baseName.Length > 0 ? baseName : baseFolder)}",
+                                  $"{kind?.DisplayName ?? source.GetType().Name}: {source.Location}",
+                                  r => r.Places.Any(p => p.SourceId == id), columns, children));
+        }
+
+        // どのデータ元のタブにも入らない行（更新前の行や、削除したデータ元の行）
+        var ids = Sources.Select(s => s.Id).ToHashSet();
+        if (Rows.Any(r => !r.Places.Any(p => ids.Contains(p.SourceId))))
+        {
+            tabs.Add(new SheetTab(UnsortedTabId, "（未分類）",
+                "データ元が分からない行です（以前の中間データの行、削除したデータ元の行など）。更新すると、データ元のタブに分かれます",
+                r => !r.Places.Any(p => ids.Contains(p.SourceId)), Columns, []));
+        }
+
+        if (tabs.Select(t => t.Signature).SequenceEqual(Tabs.Select(t => t.Signature))) return;
+        Tabs = tabs;
+        TabsChanged?.Invoke();
     }
 
     // ---- データ元の追加・削除 ----
@@ -139,7 +239,7 @@ public class SheetViewModel : INotifyPropertyChanged
                 log.Info($"[{Name}] 読み込み: {kind.DisplayName} {source.Location}");
                 var records = kind.CreateReader(source).Read();
                 log.Info($"[{Name}]   {records.Count} 件");
-                combiner.Add(records);
+                combiner.Add(records, source.Id);
             }
             LogDetails("キー重複（先のものを使用）", combiner.Duplicates, LogLevel.Warn);
 
@@ -149,6 +249,7 @@ public class SheetViewModel : INotifyPropertyChanged
 
             Rows.Clear();
             foreach (var r in result.Rows) Rows.Add(r);
+            UpdateTabs(); // 新しいサブフォルダのタブなど
 
             LogDetails("追加", result.Rows.Where(r => r.State == RowState.New).Select(r => r.Key), LogLevel.Info);
             LogDetails("消えた", result.Rows.Where(r => r.State == RowState.Missing && !alreadyMissing.Contains(r.Key)).Select(r => r.Key), LogLevel.Warn);
@@ -184,6 +285,7 @@ public class SheetViewModel : INotifyPropertyChanged
     {
         var targets = Rows.Where(r => r.State == RowState.Missing).ToList();
         foreach (var r in targets) Rows.Remove(r);
+        UpdateTabs();
         Status = $"消えた行を {targets.Count} 行削除しました";
         AppLogger.Instance.Info($"[{Name}] {Status}");
         _requestSave();

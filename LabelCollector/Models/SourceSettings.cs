@@ -12,6 +12,13 @@ namespace LabelCollector.Models;
 public abstract class SourceSettings : ObservableObject
 {
     /// <summary>
+    /// シートの中でデータ元を見分けるための ID。行がどのデータ元から読まれたか（RowItem.Places）に使う。
+    /// 以前の .lc には無いので、読み込み時に新しく作られ、次の保存で書き込まれる
+    /// </summary>
+    [XmlAttribute("id")]
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+
+    /// <summary>
     /// データ元から表に取り込む列。「元の列名」→「表の列名」の対応。
     /// 複数のデータ元が同じ「表の列名」に取り込むと、同じキーの行の同じ列にまとまる
     /// </summary>
@@ -123,6 +130,11 @@ public class ColumnMapping : ObservableObject
 
 /// <summary>
 /// データ元から読んだ1行分。
-/// Key＝行を識別するキー、Origin＝どこから読んだか（ファイル名・シート名など）、Values＝表の列名→値
+/// Key＝行を識別するキー、Origin＝どこから読んだか（ファイル名・シート名など）、Values＝表の列名→値、
+/// File＝読んだファイル（フォルダのデータ元ならフォルダからの相対パス、ファイルのデータ元ならファイル名。ファイルを持たないデータ元は空）
 /// </summary>
-public record SourceRecord(string Key, string Origin, IReadOnlyDictionary<string, string> Values);
+public record SourceRecord(string Key, string Origin, IReadOnlyDictionary<string, string> Values, string File = "")
+{
+    /// <summary>まとめた後の行で、どのデータ元のどのファイルから読んだか（RecordCombiner が入れる）</summary>
+    public IReadOnlyList<RowPlace> Places { get; init; } = [];
+}
