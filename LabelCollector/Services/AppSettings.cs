@@ -15,6 +15,14 @@ public class AppSettings
     /// <summary>左のエクスプローラーに表示する作業フォルダ</summary>
     public string WorkDirectory { get; set; } = "";
 
+    /// <summary>
+    /// 組にして一緒に入力する、2つの手入力の列の名前（どのシートでも同じ）。
+    /// シートにこの2列があると、値を「1つ目の列の値と、それに紐づく2つ目の列の値」の組で入力する。
+    /// 名前は settings.xml で変えられる（空にすると組にしない）
+    /// </summary>
+    public string LinkedColumn1 { get; set; } = "部品番号";
+    public string LinkedColumn2 { get; set; } = "数量";
+
     public static AppSettings Load()
     {
         try

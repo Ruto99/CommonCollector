@@ -35,6 +35,7 @@ public partial class SheetView : UserControl
     {
         TabsHost.Content = null;
         MultiValueColumns.Clear();
+        PairColumns.Clear();
         if (_sheet == null) return;
         TabsHost.Content = CreateTabControl(_sheet, _sheet.Tabs, parentId: "");
     }
@@ -102,20 +103,28 @@ public partial class SheetView : UserControl
         grid.Columns.Add(TextColumn("状態", "State", readOnly: true, width: 70));
         grid.Columns.Add(TextColumn("キー", "Key", readOnly: true, star: 1.5));
 
+        // 組の2列（例：部品番号と数量）がシートにそろっていれば、その2列は組で入力する
+        var paired = LinkedColumns.IsPresentIn(columns.Where(c => c.IsManual).Select(c => c.Name));
+
         foreach (var column in columns)
         {
             if (column.IsManual)
             {
                 // 手入力の列（どれも複数の値を入れられる）：値が1つまでならセルに直接入力。
-                // 2つ目からは、右端の ▾（Alt+↓）でセルの下に開く一覧で入力する
-                var listPath = "ManualList[" + EscapeIndexer(column.Name) + "]";
-                var listColumn = TextColumn(column.Name + "（手入力）", listPath, readOnly: false, star: 2);
+                // 2つ目からは、右端の ▾（Alt+↓）でセルの下に開く一覧で入力する。
+                // 組の列は、2列いっしょの表（1行に1組）で入力する
+                var isPair = paired && LinkedColumns.Contains(column.Name);
+                var name = EscapeIndexer(column.Name);
+                var listPath = (isPair ? "ManualPair[" : "ManualList[") + name + "]";
+                var header = column.Name + (isPair ? "（手入力・組）" : "（手入力）");
+                var listColumn = TextColumn(header, listPath, readOnly: false, star: 2);
                 // 1文字ごとに書き込むと、前後の空白を取る処理で入力中の空白が消えるので、確定したときに書き込む
                 ((Binding)listColumn.Binding).UpdateSourceTrigger = UpdateSourceTrigger.LostFocus;
-                var listStyle = ManualCellStyle(listPath, toolTip: true);
+                var listStyle = ManualCellStyle(listPath, toolTip: true, emptyFlagPath: isPair ? "ManualPair.Empty[" + name + "]" : null);
                 listStyle.Setters.Add(new Setter(TemplateProperty, FindResource("MultiValueCellTemplate")));
                 listColumn.CellStyle = listStyle;
                 MultiValueColumns[listColumn] = column.Name;
+                if (isPair) PairColumns.Add(listColumn);
                 grid.Columns.Add(listColumn);
                 continue;
             }
@@ -151,11 +160,18 @@ public partial class SheetView : UserControl
     /// 枠の太さは DataGridCell の既定（1）のままにして、色だけ変えるので、編集中も大きさは変わらない
     /// </summary>
     /// <param name="toolTip">セルの値をツールチップにも出す（複数の値が幅に収まらないとき用。空なら出さない）</param>
-    private Style ManualCellStyle(string path, bool toolTip = false)
+    /// <param name="emptyFlagPath">組の列用：この列の値が空の組があると true になるパス。true なら赤枠にする（もう片方の列だけ入っている組）</param>
+    private Style ManualCellStyle(string path, bool toolTip = false, string? emptyFlagPath = null)
     {
         var style = new Style(typeof(DataGridCell), (Style)FindResource(typeof(DataGridCell)));
         var brush = (Brush)FindResource("EmptyManualCellBrush");
         if (toolTip) style.Setters.Add(new Setter(ToolTipProperty, new Binding(path)));
+        if (emptyFlagPath != null)
+        {
+            var missing = new DataTrigger { Binding = new Binding(emptyFlagPath), Value = true };
+            missing.Setters.Add(new Setter(Control.BorderBrushProperty, brush));
+            style.Triggers.Add(missing);
+        }
         foreach (var empty in new object?[] { "", null })
         {
             var trigger = new DataTrigger { Binding = new Binding(path), Value = empty };
@@ -171,11 +187,16 @@ public partial class SheetView : UserControl
     /// <summary>表の手入力の列 → 手入力の列名</summary>
     private Dictionary<DataGridColumn, string> MultiValueColumns { get; } = new();
 
-    // 値が2つ以上あるセルは、セルでは編集させずに一覧を開く（どの値を書き換えるのか分からないので）
+    /// <summary>表の手入力の列のうち、組の列（LinkedColumns）</summary>
+    private HashSet<DataGridColumn> PairColumns { get; } = new();
+
+    // 値（組）が2つ以上あるセルは、セルでは編集させずに一覧を開く（どの値を書き換えるのか分からないので）
     private void DataGrid_BeginningEdit(object? sender, DataGridBeginningEditEventArgs e)
     {
         if (sender is not DataGrid grid || !MultiValueColumns.TryGetValue(e.Column, out var name)) return;
-        if (e.Row.Item is not RowItem row || row.GetManualValues(name).Count <= 1) return;
+        if (e.Row.Item is not RowItem row) return;
+        var count = PairColumns.Contains(e.Column) ? row.ManualPair.Count : row.GetManualValues(name).Count;
+        if (count <= 1) return;
         e.Cancel = true;
         if (FindCell(e.Column, row) is { } cell)
             Dispatcher.BeginInvoke(() => OpenValueList(grid, cell, row, name), DispatcherPriority.Input);
@@ -206,6 +227,19 @@ public partial class SheetView : UserControl
     {
         if (DataContext is not SheetViewModel vm) return;
         grid.CommitEdit(DataGridEditingUnit.Row, exitEditingMode: true); // セルで入力中の値を先に確定する
+
+        if (cell.Column != null && PairColumns.Contains(cell.Column))
+        {
+            // 組の列：2列いっしょの表（1行に1組）で入力する
+            var (first, second) = (LinkedColumns.First, LinkedColumns.Second);
+            ValueListEditor.OpenPairs(cell, first, second, row.GetPairs(first, second), (pairs, duplicates) =>
+            {
+                if (row.SetPairs(first, second, pairs)) vm.RequestSave();
+                if (duplicates.Count > 0)
+                    vm.Status = $"「{row.Key}」の「{first}」に同じ値が2回以上あります（そのまま保存しました）：{string.Join("、", duplicates)}";
+            }, closed: () => cell.Focus());
+            return;
+        }
 
         ValueListEditor.Open(cell, row.GetManualValues(name), (values, duplicates) =>
         {

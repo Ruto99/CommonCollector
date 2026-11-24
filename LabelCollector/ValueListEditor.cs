@@ -7,47 +7,53 @@ using System.Windows.Media;
 namespace LabelCollector;
 
 /// <summary>
-/// 手入力の列に複数の値を、1つずつ入力する一覧。表のセルのすぐ下に開く（Open で開く）。
+/// 手入力の列に複数の値を、1つずつ入力する一覧。表のセルのすぐ下に開く。
 /// 値ごとに入力欄が分かれているので、区切りの文字（，など）を打たなくてよい。
-/// ・Enter：次の行を足して移る　・空の行で Backspace：その行を消す　・↑↓：行を移る
+/// ・Open：1つの列の値の一覧　・OpenPairs：組の2列（例：部品番号と数量）を、1行に1組で入力する表
+/// ・Enter：次の欄・次の行へ（無ければ行を足す）　・空の行で Backspace：その行を消す　・↑↓：上下の行へ
 /// ・Ctrl+Enter・「OK」・一覧の外をクリック：確定　・Esc・「キャンセル」：取り消し
-/// ・エクセルなどから縦（または横）に並んだ値を貼り付けると、1つずつの行に分かれる
-/// ・同じ値が2回あると赤くする（Ctrl+Enter・OK では確定できない。外をクリックして閉じたときは1つにまとめる）
+/// ・エクセルなどからコピーした値を貼り付けると、1行（組の表なら1組）ずつに分かれる
+/// ・1列目に同じ値が2回あると赤くする（Ctrl+Enter・OK では確定できない）
 /// </summary>
 public class ValueListEditor : Border
 {
+    private readonly int _columns;
     private readonly StackPanel _rows = new();
     private readonly TextBlock _error = new()
     {
         Foreground = Brushes.Firebrick, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0),
         Visibility = Visibility.Collapsed,
     };
-    private readonly Brush _normalBorder = new TextBox().BorderBrush;
     private static readonly Brush DuplicateBackground = new SolidColorBrush(Color.FromRgb(0xFF, 0xEB, 0xEE));
 
     private readonly Popup _popup;
-    private readonly Action<IReadOnlyList<string>, IReadOnlyList<string>> _commit;
+    private readonly Action<List<string[]>, IReadOnlyList<string>> _commit;
+    private Action? _closed;
     private bool _canceled;
 
-    /// <param name="commit">確定したときに呼ぶ（値の一覧, 重複していて1つにまとめた値）</param>
-    private ValueListEditor(UIElement target, double width, IReadOnlyList<string> values,
-                            Action<IReadOnlyList<string>, IReadOnlyList<string>> commit)
+    /// <param name="headers">組の表なら列の見出し（2つ）。1つの列なら null</param>
+    /// <param name="commit">確定したときに呼ぶ（行ごとの値, 1列目で重複している値）</param>
+    private ValueListEditor(FrameworkElement target, string[]? headers, IEnumerable<string[]> rows,
+                            Action<List<string[]>, IReadOnlyList<string>> commit)
     {
+        _columns = headers?.Length ?? 1;
         _commit = commit;
         Background = SystemColors.WindowBrush;
         BorderBrush = SystemColors.ActiveBorderBrush;
         BorderThickness = new Thickness(1);
         Padding = new Thickness(6);
-        Width = Math.Max(width, 260);
+        Width = Math.Max(target.ActualWidth, _columns == 1 ? 260 : 380);
 
         var hint = new TextBlock
         {
-            Text = "1行に1つ。Enter で次の行、Ctrl+Enter で確定、Esc で取り消し",
+            Text = _columns == 1
+                ? "1行に1つ。Enter で次の行、Ctrl+Enter で確定、Esc で取り消し"
+                : "1行に1組。Enter で右の欄・次の行、Ctrl+Enter で確定、Esc で取り消し",
             Foreground = Brushes.Gray, FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 4),
         };
 
-        var add = new Button { Content = "＋ 値を追加", Padding = new Thickness(6, 1, 6, 1), Focusable = false };
-        add.Click += (_, _) => AddRow("", _rows.Children.Count).Focus();
+        var add = new Button { Content = _columns == 1 ? "＋ 値を追加" : "＋ 組を追加", Padding = new Thickness(6, 1, 6, 1), Focusable = false };
+        add.Click += (_, _) => AddRow([], _rows.Children.Count)[0].Focus();
         var ok = new Button { Content = "OK", MinWidth = 64, Margin = new Thickness(0, 0, 4, 0), Focusable = false };
         ok.Click += (_, _) => Close(commit: true);
         var cancel = new Button { Content = "キャンセル", MinWidth = 64, Focusable = false };
@@ -62,16 +68,24 @@ public class ValueListEditor : Border
 
         var panel = new DockPanel();
         DockPanel.SetDock(hint, Dock.Top);
+        panel.Children.Add(hint);
+        if (headers != null)
+        {
+            // 組の表の見出し（入力欄と同じ並び）
+            var header = CreateRowPanel(headers.Select(h => (UIElement)new TextBlock { Text = h, FontWeight = FontWeights.Bold, Margin = new Thickness(2, 0, 0, 2) }).ToArray(),
+                                        new TextBlock(), new Border { Width = 22 });
+            DockPanel.SetDock(header, Dock.Top);
+            panel.Children.Add(header);
+        }
         DockPanel.SetDock(buttons, Dock.Bottom);
         DockPanel.SetDock(_error, Dock.Bottom);
-        panel.Children.Add(hint);
         panel.Children.Add(buttons);
         panel.Children.Add(_error);
         panel.Children.Add(new ScrollViewer { Content = _rows, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, MaxHeight = 300 });
         Child = panel;
 
-        foreach (var v in values) AddRow(v, _rows.Children.Count);
-        if (_rows.Children.Count == 0) AddRow("", 0);
+        foreach (var r in rows) AddRow(r, _rows.Children.Count);
+        if (_rows.Children.Count == 0) AddRow([], 0);
 
         PreviewKeyDown += (_, e) =>
         {
@@ -96,8 +110,8 @@ public class ValueListEditor : Border
         };
         _popup.Opened += (_, _) =>
         {
-            // 最後の行の末尾から入力できるようにする
-            var last = Boxes().Last();
+            // 最後の行の1つ目の欄の末尾から入力できるようにする
+            var last = BoxesOf(_rows.Children.Count - 1)[0];
             last.Focus();
             Keyboard.Focus(last);
             last.CaretIndex = last.Text.Length;
@@ -106,25 +120,37 @@ public class ValueListEditor : Border
         {
             if (!_canceled)
             {
-                var all = Values();
-                var duplicates = all.GroupBy(v => v).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
-                _commit(all.Distinct().ToList(), duplicates);
+                var values = Values();
+                var duplicates = values.Select(v => v[0]).Where(v => v.Length > 0)
+                                       .GroupBy(v => v).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
+                _commit(values, duplicates);
             }
             _closed?.Invoke(); // 確定・取り消しのどちらでも
         };
         Check();
     }
 
-    /// <summary>一覧が閉じた（確定・取り消しのどちらでも）</summary>
-    private Action? _closed;
-
-    /// <summary>target（表のセル）の下に一覧を開く</summary>
+    /// <summary>target（表のセル）の下に、1つの列の値の一覧を開く</summary>
     /// <param name="commit">確定したときに呼ぶ（値の一覧, 重複していて1つにまとめた値）。取り消したときは呼ばない</param>
     /// <param name="closed">閉じたときに呼ぶ（確定・取り消しのどちらでも。表にフォーカスを戻すのに使う）</param>
     public static void Open(FrameworkElement target, IReadOnlyList<string> values,
                             Action<IReadOnlyList<string>, IReadOnlyList<string>> commit, Action? closed = null)
     {
-        var editor = new ValueListEditor(target, target.ActualWidth, values, commit) { _closed = closed };
+        var editor = new ValueListEditor(target, null, values.Select(v => new[] { v }),
+            (rows, duplicates) => commit(rows.Select(r => r[0]).Distinct().ToList(), duplicates)) { _closed = closed };
+        editor._popup.IsOpen = true;
+    }
+
+    /// <summary>target（表のセル）の下に、組の2列を1行に1組で入力する表を開く</summary>
+    /// <param name="commit">確定したときに呼ぶ（組の一覧, 1列目で重複している値）。取り消したときは呼ばない。
+    /// 重複していても組はまとめない（2列目の値が違うかもしれないので）</param>
+    public static void OpenPairs(FrameworkElement target, string header1, string header2,
+                                 IReadOnlyList<(string First, string Second)> pairs,
+                                 Action<IReadOnlyList<(string First, string Second)>, IReadOnlyList<string>> commit,
+                                 Action? closed = null)
+    {
+        var editor = new ValueListEditor(target, [header1, header2], pairs.Select(p => new[] { p.First, p.Second }),
+            (rows, duplicates) => commit(rows.Select(r => (r[0], r[1])).ToList(), duplicates)) { _closed = closed };
         editor._popup.IsOpen = true;
     }
 
@@ -135,44 +161,78 @@ public class ValueListEditor : Border
         _popup.IsOpen = false;
     }
 
-    private IEnumerable<TextBox> Boxes() => _rows.Children.OfType<DockPanel>().Select(r => (TextBox)r.Tag);
+    /// <summary>index 行目の入力欄</summary>
+    private TextBox[] BoxesOf(int index) => (TextBox[])((FrameworkElement)_rows.Children[index]).Tag;
 
-    /// <summary>入力された値（前後の空白を取り、空の行は除く）</summary>
-    private List<string> Values() => Boxes().Select(b => b.Text.Trim()).Where(v => v.Length > 0).ToList();
+    private IEnumerable<TextBox[]> AllBoxes() => _rows.Children.OfType<FrameworkElement>().Select(r => (TextBox[])r.Tag);
+
+    /// <summary>入力された値（前後の空白を取り、全部の欄が空の行は除く）</summary>
+    private List<string[]> Values() =>
+        AllBoxes().Select(b => b.Select(x => x.Text.Trim()).ToArray()).Where(v => v.Any(x => x.Length > 0)).ToList();
+
+    /// <summary>1行分：番号・入力欄（列の数だけ、同じ幅）・× ボタン</summary>
+    private Grid CreateRowPanel(UIElement[] cells, UIElement number, UIElement remove)
+    {
+        var grid = new Grid { Margin = new Thickness(0, 0, 0, 2) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(22) });
+        foreach (var _ in cells) grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Grid.SetColumn(number, 0);
+        grid.Children.Add(number);
+        for (int i = 0; i < cells.Length; i++)
+        {
+            Grid.SetColumn(cells[i], i + 1);
+            if (cells[i] is FrameworkElement fe && i > 0) fe.Margin = new Thickness(4, fe.Margin.Top, 0, fe.Margin.Bottom);
+            grid.Children.Add(cells[i]);
+        }
+        Grid.SetColumn(remove, cells.Length + 1);
+        grid.Children.Add(remove);
+        return grid;
+    }
 
     /// <summary>index の位置に行を足して、その入力欄を返す</summary>
-    private TextBox AddRow(string value, int index)
+    private TextBox[] AddRow(string[] values, int index)
     {
-        var box = new TextBox { Text = value, Padding = new Thickness(2, 1, 2, 1), VerticalContentAlignment = VerticalAlignment.Center };
-        var remove = new Button { Content = "×", Width = 22, Margin = new Thickness(4, 0, 0, 0), ToolTip = "この値を消す", Focusable = false };
-        var number = new TextBlock { Width = 22, VerticalAlignment = VerticalAlignment.Center, Foreground = Brushes.Gray };
+        var boxes = Enumerable.Range(0, _columns)
+            .Select(i => new TextBox
+            {
+                Text = i < values.Length ? values[i] : "",
+                Padding = new Thickness(2, 1, 2, 1), VerticalContentAlignment = VerticalAlignment.Center,
+            }).ToArray();
+        var remove = new Button
+        {
+            Content = "×", Width = 22, Margin = new Thickness(4, 0, 0, 0), Focusable = false,
+            ToolTip = _columns == 1 ? "この値を消す" : "この組を消す",
+        };
+        var number = new TextBlock { VerticalAlignment = VerticalAlignment.Center, Foreground = Brushes.Gray };
 
-        var row = new DockPanel { Margin = new Thickness(0, 0, 0, 2), Tag = box };
-        DockPanel.SetDock(number, Dock.Left);
-        DockPanel.SetDock(remove, Dock.Right);
-        row.Children.Add(number);
-        row.Children.Add(remove);
-        row.Children.Add(box);
+        var row = CreateRowPanel(boxes.Cast<UIElement>().ToArray(), number, remove);
+        row.Tag = boxes;
 
-        remove.Click += (_, _) => RemoveRow(row);
-        box.TextChanged += (_, _) => Check();
-        box.PreviewKeyDown += (_, e) => Box_PreviewKeyDown(row, box, e);
-        DataObject.AddPastingHandler(box, (_, e) => Box_Pasting(row, box, e));
+        remove.Click += (_, _) => RemoveRow(row, 0);
+        for (int c = 0; c < boxes.Length; c++)
+        {
+            var column = c;
+            var box = boxes[c];
+            box.TextChanged += (_, _) => Check();
+            box.PreviewKeyDown += (_, e) => Box_PreviewKeyDown(row, column, e);
+            DataObject.AddPastingHandler(box, (_, e) => Box_Pasting(row, column, box, e));
+        }
 
         _rows.Children.Insert(index, row);
         Renumber();
         Check();
-        return box;
+        return boxes;
     }
 
-    private void RemoveRow(DockPanel row)
+    private void RemoveRow(FrameworkElement row, int column)
     {
         var index = _rows.Children.IndexOf(row);
         _rows.Children.Remove(row);
-        if (_rows.Children.Count == 0) AddRow("", 0);
+        if (_rows.Children.Count == 0) AddRow([], 0);
         Renumber();
         Check();
-        var focus = Boxes().ElementAt(Math.Max(0, Math.Min(index, _rows.Children.Count) - 1));
+        var focus = BoxesOf(Math.Max(0, Math.Min(index, _rows.Children.Count) - 1))[column];
         focus.Focus();
         focus.CaretIndex = focus.Text.Length;
     }
@@ -180,69 +240,98 @@ public class ValueListEditor : Border
     private void Renumber()
     {
         var i = 1;
-        foreach (var row in _rows.Children.OfType<DockPanel>())
+        foreach (var row in _rows.Children.OfType<Grid>())
             ((TextBlock)row.Children[0]).Text = $"{i++}.";
     }
 
-    private void Box_PreviewKeyDown(DockPanel row, TextBox box, KeyEventArgs e)
+    private void Box_PreviewKeyDown(FrameworkElement row, int column, KeyEventArgs e)
     {
         var index = _rows.Children.IndexOf(row);
+        var boxes = BoxesOf(index);
         if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.None)
         {
-            // 次の行が空ならそこへ、無ければ行を足して移る
-            var next = index + 1 < _rows.Children.Count ? Boxes().ElementAt(index + 1) : null;
-            (next is { Text.Length: 0 } ? next : AddRow("", index + 1)).Focus();
+            if (column + 1 < _columns)
+            {
+                boxes[column + 1].Focus(); // 組の右の欄へ
+            }
+            else
+            {
+                // 次の行が空ならそこへ、無ければ行を足して移る
+                var next = index + 1 < _rows.Children.Count ? BoxesOf(index + 1) : null;
+                (next != null && next.All(b => b.Text.Length == 0) ? next : AddRow([], index + 1))[0].Focus();
+            }
             e.Handled = true;
         }
-        else if (e.Key == Key.Back && box.Text.Length == 0 && _rows.Children.Count > 1)
+        else if (e.Key == Key.Back && boxes.All(b => b.Text.Length == 0) && _rows.Children.Count > 1)
         {
-            RemoveRow(row);
+            if (column > 0) boxes[column - 1].Focus(); // 組の左の欄へ戻る
+            else RemoveRow(row, _columns - 1);
             e.Handled = true;
         }
         else if (e.Key == Key.Down && index + 1 < _rows.Children.Count)
         {
-            Boxes().ElementAt(index + 1).Focus();
+            BoxesOf(index + 1)[column].Focus();
             e.Handled = true;
         }
         else if (e.Key == Key.Up && index > 0)
         {
-            Boxes().ElementAt(index - 1).Focus();
+            BoxesOf(index - 1)[column].Focus();
             e.Handled = true;
         }
     }
 
-    /// <summary>改行・タブを含む文字を貼り付けたら、1つずつの行に分ける</summary>
-    private void Box_Pasting(DockPanel row, TextBox box, DataObjectPastingEventArgs e)
+    /// <summary>
+    /// 改行・タブを含む文字を貼り付けたら、行に分ける。
+    /// 組の表では、エクセルの2列（タブ区切り）を貼ると、そのまま組として入る
+    /// </summary>
+    private void Box_Pasting(FrameworkElement row, int column, TextBox box, DataObjectPastingEventArgs e)
     {
         if (e.SourceDataObject.GetData(DataFormats.UnicodeText) is not string text) return;
-        var parts = text.Split(['\r', '\n', '\t'], StringSplitOptions.RemoveEmptyEntries)
-                        .Select(p => p.Trim()).Where(p => p.Length > 0).ToList();
-        if (parts.Count <= 1) return; // 1つだけなら普通の貼り付け
+        if (text.IndexOfAny(['\r', '\n', '\t']) < 0) return; // 1つだけなら普通の貼り付け
+
+        var lines = text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+                        .Select(l => l.Split('\t').Select(p => p.Trim()).ToArray())
+                        .Where(l => l.Any(p => p.Length > 0)).ToList();
+        if (_columns == 1) // 1つの列なら、タブで区切られた値も1つずつの行にする
+            lines = lines.SelectMany(l => l.Where(p => p.Length > 0).Select(p => new[] { p })).ToList();
+        if (lines.Count == 0) return;
         e.CancelCommand();
 
-        // 1つ目はカーソルの位置に、残りは次の行から
-        box.SelectedText = parts[0];
-        box.CaretIndex = box.SelectionStart + box.SelectionLength;
-        box.SelectionLength = 0;
+        // 1行目は今の行のカーソルの欄から、残りは次の行から
         var index = _rows.Children.IndexOf(row);
         TextBox last = box;
-        foreach (var p in parts.Skip(1)) last = AddRow(p, ++index);
+        for (int i = 0; i < lines.Count; i++)
+        {
+            var boxes = i == 0 ? BoxesOf(index) : AddRow([], index + i);
+            for (int c = 0; c < lines[i].Length && column + c < _columns; c++)
+            {
+                last = boxes[column + c];
+                last.Text = lines[i][c];
+            }
+        }
         last.Focus();
         last.CaretIndex = last.Text.Length;
     }
 
-    /// <summary>同じ値が2回以上ある入力欄を赤くして、メッセージを出す。問題が無ければ true</summary>
+    /// <summary>1列目に同じ値が2回以上ある入力欄を赤くして、メッセージを出す。問題が無ければ true</summary>
     private bool Check()
     {
-        var boxes = Boxes().ToList();
-        var duplicates = boxes.Select(b => b.Text.Trim()).Where(v => v.Length > 0)
-                              .GroupBy(v => v).Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet();
-        foreach (var b in boxes)
+        var firsts = AllBoxes().Select(b => b[0]).ToList();
+        var duplicates = firsts.Select(b => b.Text.Trim()).Where(v => v.Length > 0)
+                               .GroupBy(v => v).Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet();
+        foreach (var b in firsts)
         {
             // 入力中の欄は枠の色がテーマの色になるので、背景の色でも分かるようにする
-            var dup = duplicates.Contains(b.Text.Trim());
-            b.BorderBrush = dup ? Brushes.Red : _normalBorder;
-            b.Background = dup ? DuplicateBackground : Brushes.White;
+            if (duplicates.Contains(b.Text.Trim()))
+            {
+                b.BorderBrush = Brushes.Red;
+                b.Background = DuplicateBackground;
+            }
+            else
+            {
+                b.ClearValue(Control.BorderBrushProperty); // テーマの既定の枠・背景に戻す
+                b.ClearValue(Control.BackgroundProperty);
+            }
         }
 
         _error.Text = duplicates.Count > 0 ? $"同じ値が2回以上入っています：{string.Join("、", duplicates)}" : "";

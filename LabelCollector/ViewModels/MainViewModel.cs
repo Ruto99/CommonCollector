@@ -130,6 +130,15 @@ public class MainViewModel : INotifyPropertyChanged
         UndoCommand = new RelayCommand(Undo, () => _history.CanUndo);
         RedoCommand = new RelayCommand(Redo, () => _history.CanRedo);
         Log.Info("LabelCollector を起動しました");
+
+        // 組にして入力する2つの手入力の列（settings.xml の LinkedColumn1 / LinkedColumn2）。
+        // settings.xml に項目が無ければ既定の名前を書き出しておく（あとで名前を書き換えられるように）
+        LinkedColumns.First = _settings.LinkedColumn1.Trim();
+        LinkedColumns.Second = _settings.LinkedColumn2.Trim();
+        _settings.Save();
+        if (LinkedColumns.IsEnabled)
+            Log.Info($"組にして入力する列：{LinkedColumns.First} と {LinkedColumns.Second}（settings.xml で変更できます）");
+
         Load();
         _history.Reset(Snapshot());
 
