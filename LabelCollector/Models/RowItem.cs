@@ -81,6 +81,31 @@ public class RowItem : ObservableObject
         return true;
     }
 
+    /// <summary>
+    /// 同じキーの行（元に戻す・やり直しの履歴から読んだもの）の内容を、この行に写す。
+    /// 行を作り直さないので、表のスクロール位置などはそのまま
+    /// </summary>
+    public void CopyFrom(RowItem other)
+    {
+        State = other.State;
+        Origin = other.Origin;
+        LastSeen = other.LastSeen;
+        Places = other.Places;
+        if (!SameCells(AutoCells, other.AutoCells))
+        {
+            AutoCells = other.AutoCells;
+            Auto.NotifyAllChanged();
+        }
+        if (!SameCells(ManualCells, other.ManualCells))
+        {
+            ManualCells = other.ManualCells;
+            Manual.NotifyAllChanged();
+        }
+    }
+
+    private static bool SameCells(List<CellValue> a, List<CellValue> b) =>
+        a.Count == b.Count && a.Zip(b).All(p => p.First.Column == p.Second.Column && p.First.Value == p.Second.Value);
+
     // ---- 以前の形式（A列・B列の固定2列）を読むためのもの。保存はしない ----
 
     /// <summary>以前の A列。読み込んだら Origin に入れる</summary>

@@ -88,6 +88,24 @@ public class MainViewModel : INotifyPropertyChanged
     public ICommand ExportSheetCommand { get; }
     public ICommand ImportSheetsCommand { get; }
     public ICommand ChangeWorkDirectoryCommand { get; }
+    public ICommand UndoCommand { get; }
+    public ICommand RedoCommand { get; }
+
+    // ---- 元に戻す・やり直し ----
+
+    /// <summary>元に戻す・やり直しの履歴（開いている中間データの中身を、保存のたびに覚える）</summary>
+    private readonly UndoHistory _history = new();
+
+    /// <summary>まとめて1回の操作にしている間は 1 以上（全て更新など）</summary>
+    private int _historyBatch;
+
+    /// <summary>履歴の状態を画面に戻している間は true（そのときの保存は履歴に入れない）</summary>
+    private bool _restoring;
+
+    /// <summary>
+    /// 元に戻す前に、画面で入力中のもの（文字の入力・表の編集）を確定させる。MainWindow が設定する
+    /// </summary>
+    public Action? CommitPendingEdits { get; set; }
 
     private const string FileFilter = LcFileStore.DialogFilter;
 
@@ -109,8 +127,11 @@ public class MainViewModel : INotifyPropertyChanged
         RefreshAllCommand = new RelayCommand(RefreshAll);
         SaveCommand = new RelayCommand(() => Save(manual: true));
         ChangeWorkDirectoryCommand = new RelayCommand(ChangeWorkDirectory);
+        UndoCommand = new RelayCommand(Undo, () => _history.CanUndo);
+        RedoCommand = new RelayCommand(Redo, () => _history.CanRedo);
         Log.Info("LabelCollector を起動しました");
         Load();
+        _history.Reset(Snapshot());
 
         // 作業フォルダ：未設定なら、開いている中間データのフォルダ
         var workDir = Directory.Exists(_settings.WorkDirectory)
@@ -246,6 +267,8 @@ public class MainViewModel : INotifyPropertyChanged
         Sheets.Clear();
         SelectedSheet = null;
         foreach (var s in data.Sheets) Sheets.Add(new SheetViewModel(s, () => Save()));
+        _history.Reset(Snapshot()); // 元に戻す・やり直しは、開いた中間データごと
+        CommandManager.InvalidateRequerySuggested();
 
         FilePath = path;
         _settings.WorkspacePath = FilePath;
@@ -421,7 +444,7 @@ public class MainViewModel : INotifyPropertyChanged
 
         var data = SheetData.CreateNew(UniqueName(SourceEditing.SuggestName(source, kind.DisplayName)));
         data.Sources.Add(source);
-        Add(data).Refresh();
+        AsOneStep(() => Add(data).Refresh()); // 追加と読み込みを、元に戻すときは1回で戻す
     }
 
     private SheetViewModel Add(SheetData data)
@@ -477,7 +500,7 @@ public class MainViewModel : INotifyPropertyChanged
     private void RefreshAll()
     {
         Log.Info($"全シート更新を開始 ({Sheets.Count} シート)");
-        foreach (var s in Sheets) s.Refresh();
+        AsOneStep(() => { foreach (var s in Sheets) s.Refresh(); });
         Status = $"全 {Sheets.Count} シートを更新しました";
         Log.Info(Status);
     }
@@ -485,6 +508,7 @@ public class MainViewModel : INotifyPropertyChanged
     /// <param name="manual">ボタン操作の保存のときだけログに残す（自動保存は頻繁なので残さない）</param>
     public void Save(bool manual = false)
     {
+        RecordHistory();
         try
         {
             var isNewFile = !File.Exists(FilePath);
@@ -504,15 +528,113 @@ public class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    // ---- 元に戻す・やり直し ----
+
+    /// <summary>今の中身（履歴用）。保存した日時は含めない</summary>
+    private string Snapshot() => LcFileStore.ToXml(new TableData { Sheets = Sheets.Select(s => s.ToData()).ToList() });
+
+    /// <summary>今の中身を履歴に記録する（前と同じなら何もしない）</summary>
+    private void RecordHistory()
+    {
+        if (_historyBatch > 0 || _restoring) return;
+        if (_history.Record(Snapshot())) CommandManager.InvalidateRequerySuggested();
+    }
+
+    /// <summary>action の中の変更を、元に戻すときは1回の操作として戻す</summary>
+    private void AsOneStep(Action action)
+    {
+        _historyBatch++;
+        try { action(); }
+        finally { _historyBatch--; }
+        RecordHistory();
+    }
+
+    private void Undo() => MoveInHistory(_history.Undo, "元に戻しました", "元に戻せる操作はありません");
+
+    private void Redo() => MoveInHistory(_history.Redo, "やり直しました", "やり直せる操作はありません");
+
+    private void MoveInHistory(Func<string?> move, string done, string nothing)
+    {
+        // 入力中のものを確定して履歴に入れてから動かす（入力中の内容を元に戻すことになる）
+        CommitPendingEdits?.Invoke();
+        RecordHistory();
+
+        var state = move();
+        if (state == null)
+        {
+            Status = nothing;
+            return;
+        }
+
+        _restoring = true;
+        try
+        {
+            Restore(LcFileStore.FromXml(state));
+            Save();
+        }
+        finally
+        {
+            _restoring = false;
+        }
+        _history.ReplaceCurrent(Snapshot());
+        CommandManager.InvalidateRequerySuggested();
+        Status = $"{done} ({DateTime.Now:HH:mm:ss})";
+        Log.Info(done);
+    }
+
+    /// <summary>
+    /// 履歴の中身を画面に戻す。シートの数が同じなら順番どおりに、違えば名前で対応させて、
+    /// 対応するシートは中身だけ入れ替える（開いているタブはそのまま）
+    /// </summary>
+    private void Restore(TableData data)
+    {
+        if (data.Sheets.Count == Sheets.Count)
+        {
+            for (int i = 0; i < Sheets.Count; i++) Sheets[i].Restore(data.Sheets[i]);
+            return;
+        }
+
+        var unused = Sheets.ToList();
+        var result = new List<SheetViewModel>();
+        foreach (var s in data.Sheets)
+        {
+            var sheet = unused.FirstOrDefault(v => v.Name == s.Name);
+            if (sheet != null)
+            {
+                unused.Remove(sheet);
+                sheet.Restore(s);
+            }
+            else
+            {
+                sheet = new SheetViewModel(s, () => Save());
+            }
+            result.Add(sheet);
+        }
+
+        foreach (var sheet in unused) Sheets.Remove(sheet); // タブ・選択・プロパティからも外れる
+        for (int i = 0; i < result.Count; i++)
+        {
+            var at = Sheets.IndexOf(result[i]);
+            if (at == i) continue;
+            if (at >= 0) Sheets.Move(at, i);
+            else Sheets.Insert(i, result[i]);
+        }
+    }
+
     public event PropertyChangedEventHandler? PropertyChanged;
     private void OnPropertyChanged([CallerMemberName] string? name = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }
 
-public class RelayCommand(Action execute) : ICommand
+/// <param name="canExecute">押せるかどうか。省略すると常に押せる</param>
+public class RelayCommand(Action execute, Func<bool>? canExecute = null) : ICommand
 {
-    public event EventHandler? CanExecuteChanged { add { } remove { } }
-    public bool CanExecute(object? parameter) => true;
+    public event EventHandler? CanExecuteChanged
+    {
+        add { if (canExecute != null) CommandManager.RequerySuggested += value; }
+        remove { if (canExecute != null) CommandManager.RequerySuggested -= value; }
+    }
+    public bool CanExecute(object? parameter) => canExecute?.Invoke() ?? true;
     public void Execute(object? parameter) => execute();
 }
 
