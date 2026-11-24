@@ -37,6 +37,26 @@ public static class LcFileStore
         return data;
     }
 
+    /// <summary>中身を XML の文字列にする（元に戻す・やり直しの履歴用）</summary>
+    public static string ToXml(TableData data)
+    {
+        using var sw = new StringWriter();
+        using (var writer = XmlWriter.Create(sw, new XmlWriterSettings { Indent = false }))
+            Serializer.Value.Serialize(writer, data);
+        return sw.ToString();
+    }
+
+    /// <summary>ToXml で作った文字列から読み直す</summary>
+    public static TableData FromXml(string xml)
+    {
+        using var sr = new StringReader(xml);
+        return (TableData?)Serializer.Value.Deserialize(sr) ?? new TableData();
+    }
+
+    /// <summary>データ元の設定を比べるための文字列</summary>
+    public static string SourcesXml(IEnumerable<SourceSettings> sources) =>
+        ToXml(new TableData { Sheets = { new SheetData { Sources = new(sources) } } });
+
     public static void Save(string path, TableData data)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);

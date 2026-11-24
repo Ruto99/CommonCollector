@@ -262,6 +262,43 @@ public class SheetViewModel : INotifyPropertyChanged
         return Data;
     }
 
+    /// <summary>
+    /// 元に戻す・やり直しで、シートを履歴の状態にする。変わったところだけ入れ替える
+    /// （行のキーと場所が同じなら、行は作り直さずに値だけ写すので、表のスクロール位置などはそのまま）
+    /// </summary>
+    public void Restore(SheetData state)
+    {
+        Name = state.Name;
+
+        if (!ManualColumns.Select(c => c.Value).SequenceEqual(state.ManualColumns.Select(c => c.Value)))
+        {
+            ManualColumns.Clear();
+            foreach (var c in state.ManualColumns) ManualColumns.Add(c);
+        }
+
+        if (LcFileStore.SourcesXml(Sources) != LcFileStore.SourcesXml(state.Sources))
+        {
+            Sources.Clear();
+            foreach (var s in state.Sources) Sources.Add(s);
+        }
+
+        var sameRows = Rows.Count == state.Rows.Count
+                       && Rows.Zip(state.Rows).All(p => p.First.Key == p.Second.Key
+                                                        && p.First.Places.SequenceEqual(p.Second.Places));
+        if (sameRows)
+        {
+            for (int i = 0; i < Rows.Count; i++) Rows[i].CopyFrom(state.Rows[i]);
+        }
+        else
+        {
+            Rows.Clear();
+            foreach (var r in state.Rows) Rows.Add(r);
+            Status = ""; // 「消えた行を 2 行削除しました」などは、もう今の表と合わない
+        }
+
+        UpdateColumns(); // タブも作り直す（構成が変わったときだけ）
+    }
+
     /// <summary>設定や入力が変わったときに呼ぶ。表の列を作り直して保存する</summary>
     public void RequestSave()
     {

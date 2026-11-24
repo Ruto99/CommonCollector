@@ -28,6 +28,10 @@
         <KeyBinding Gesture="Ctrl+S" Command="{Binding SaveCommand}"/>
         <KeyBinding Gesture="Ctrl+Shift+S" Command="{Binding SaveAsCommand}"/>
         <KeyBinding Gesture="F5" Command="{Binding RefreshAllCommand}"/>
+        <!-- 文字の入力中は、その欄の文字の取り消しが先（取り消せる文字が無いときだけ、ここに来る） -->
+        <KeyBinding Gesture="Ctrl+Z" Command="{Binding UndoCommand}"/>
+        <KeyBinding Gesture="Ctrl+Y" Command="{Binding RedoCommand}"/>
+        <KeyBinding Gesture="Ctrl+Shift+Z" Command="{Binding RedoCommand}"/>
     </Window.InputBindings>
 
     <DockPanel>
@@ -48,6 +52,9 @@
             </MenuItem>
 
             <MenuItem Header="編集(_E)">
+                <MenuItem Header="元に戻す(_U)" Command="{Binding UndoCommand}" InputGestureText="Ctrl+Z"/>
+                <MenuItem Header="やり直し(_R)" Command="{Binding RedoCommand}" InputGestureText="Ctrl+Y"/>
+                <Separator/>
                 <MenuItem Header="切り取り(_T)" Command="ApplicationCommands.Cut"/>
                 <MenuItem Header="コピー(_C)" Command="ApplicationCommands.Copy"/>
                 <MenuItem Header="貼り付け(_P)" Command="ApplicationCommands.Paste"/>
@@ -89,6 +96,11 @@
                         ToolTip="現在の中間データ(.lc)に保存します（編集内容は自動でも保存されます）"/>
                 <Button Style="{StaticResource ToolButton}" Content="名前を付けて保存" Command="{Binding SaveAsCommand}"
                         ToolTip="保存先の中間データ(.lc)を選んで、全シートを保存します"/>
+                <Separator/>
+                <Button Style="{StaticResource ToolButton}" Content="↶ 元に戻す" Command="{Binding UndoCommand}"
+                        ToolTip="直前の変更を元に戻します (Ctrl+Z)"/>
+                <Button Style="{StaticResource ToolButton}" Content="↷ やり直し" Command="{Binding RedoCommand}"
+                        ToolTip="元に戻した変更をやり直します (Ctrl+Y)"/>
                 <Separator/>
                 <Button Style="{StaticResource ToolButton}" Content="選択シートを書き出し" Command="{Binding ExportSheetCommand}"
                         ToolTip="左のエクスプローラーで選んだシートの表を、単独の中間データ(.lc)に書き出します"/>

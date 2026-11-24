@@ -33,6 +33,7 @@ public partial class MainWindow : Window
         LogAnchorable.IsVisibleChanged += (_, _) => LogToggle.IsChecked = LogAnchorable.IsVisible;
 
         _vm.ActivateRequested += Activate;
+        _vm.CommitPendingEdits = CommitPendingEdits;
 
         // 「シートを追加」のメニューに、登録されているデータ元の種類を並べる
         FillAddSheetMenu(MenuAddSheet);
@@ -43,6 +44,25 @@ public partial class MainWindow : Window
         {
             if (Dock.ActiveContent is SheetViewModel sheet) _vm.ShowSheetProperties(sheet);
         };
+    }
+
+    /// <summary>
+    /// 元に戻す・やり直しの前に、入力中のものを確定する：
+    /// 文字の欄はその値をデータへ反映し、表の編集中なら編集を確定する
+    /// </summary>
+    private static void CommitPendingEdits()
+    {
+        if (Keyboard.FocusedElement is TextBox box)
+            box.GetBindingExpression(TextBox.TextProperty)?.UpdateSource();
+
+        for (var d = Keyboard.FocusedElement as DependencyObject; d is Visual; d = VisualTreeHelper.GetParent(d))
+        {
+            if (d is DataGrid grid)
+            {
+                grid.CommitEdit(DataGridEditingUnit.Row, exitEditingMode: true);
+                break;
+            }
+        }
     }
 
     private void LogEntries_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
