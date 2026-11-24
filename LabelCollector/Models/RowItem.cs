@@ -39,6 +39,14 @@ public class RowItem : ObservableObject
     /// <summary>どこから読んだか（ファイル名・シート名など）</summary>
     public string Origin { get => _origin; set => Set(ref _origin, value); }
 
+    /// <summary>
+    /// どのデータ元（SourceSettings.Id）のどのファイルから読んだか。シートの画面で、フォルダ・ファイルごとのタブに分けるのに使う。
+    /// 消えた行は、最後に見つかった場所のタブに残る
+    /// </summary>
+    [XmlArray("Places")]
+    [XmlArrayItem("Place")]
+    public List<RowPlace> Places { get; set; } = new();
+
     /// <summary>最後にデータ元で見つかった日時</summary>
     public DateTime LastSeen { get => _lastSeen; set => Set(ref _lastSeen, value); }
 
@@ -93,6 +101,23 @@ public class RowItem : ObservableObject
 
     /// <summary>以前の B列を移す、手入力の列の名前</summary>
     public const string LegacyManualColumn = "B列";
+}
+
+/// <summary>行を読んだ場所：データ元の ID と、読んだファイル（フォルダのデータ元ならフォルダからの相対パス）</summary>
+public record RowPlace
+{
+    public RowPlace() { }
+    public RowPlace(string sourceId, string file)
+    {
+        SourceId = sourceId;
+        File = file;
+    }
+
+    [XmlAttribute("source")]
+    public string SourceId { get; set; } = "";
+
+    [XmlAttribute("file")]
+    public string File { get; set; } = "";
 }
 
 /// <summary>1つのセルの値（保存用）</summary>
