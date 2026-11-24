@@ -127,6 +127,23 @@ public partial class SheetView : UserControl
         };
     }
 
+    /// <summary>
+    /// 手入力の列のセル：何も入力されていないときは赤い枠で囲む（入力すると消える）。
+    /// 枠の太さは DataGridCell の既定（1）のままにして、色だけ変えるので、編集中も大きさは変わらない
+    /// </summary>
+    private Style ManualCellStyle(string path)
+    {
+        var style = new Style(typeof(DataGridCell), (Style)FindResource(typeof(DataGridCell)));
+        var brush = (Brush)FindResource("EmptyManualCellBrush");
+        foreach (var empty in new object?[] { "", null })
+        {
+            var trigger = new DataTrigger { Binding = new Binding(path), Value = empty };
+            trigger.Setters.Add(new Setter(Control.BorderBrushProperty, brush));
+            style.Triggers.Add(trigger);
+        }
+        return style;
+    }
+
     /// <summary>バインドのパスの [ ] の中では , [ ] ^ などに ^ を付ける</summary>
     private static string EscapeIndexer(string name)
     {

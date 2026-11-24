@@ -15,6 +15,9 @@
                 </DataTrigger>
             </Style.Triggers>
         </Style>
+
+        <!-- 手入力の列で、まだ何も入力されていないセルの枠の色（SheetView.xaml.cs の ManualCellStyle で使う） -->
+        <SolidColorBrush x:Key="EmptyManualCellBrush" Color="#E53935"/>
     </UserControl.Resources>
     <DockPanel Margin="6">
 
