@@ -103,7 +103,9 @@ public partial class SheetView : UserControl
             // 列名は "Auto[品名]" のように行の値へバインドする
             var path = (column.IsManual ? "Manual" : "Auto") + "[" + EscapeIndexer(column.Name) + "]";
             var header = column.IsManual ? column.Name + "（手入力）" : column.Name;
-            grid.Columns.Add(TextColumn(header, path, readOnly: !column.IsManual, star: column.IsManual ? 2 : 1.5));
+            var textColumn = TextColumn(header, path, readOnly: !column.IsManual, star: column.IsManual ? 2 : 1.5);
+            if (column.IsManual) textColumn.CellStyle = ManualCellStyle(path);
+            grid.Columns.Add(textColumn);
         }
 
         grid.Columns.Add(TextColumn("取得元", "Origin", readOnly: true, star: 1.5));
