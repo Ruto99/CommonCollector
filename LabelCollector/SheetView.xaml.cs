@@ -108,7 +108,7 @@ public partial class SheetView : UserControl
             {
                 // 複数の値の列：値が1つまでならセルに直接入力。2つ目からは、右端の ▾（Alt+↓）でセルの下に開く一覧で入力する
                 var listPath = "ManualList[" + EscapeIndexer(column.Name) + "]";
-                var listColumn = TextColumn(column.Name + "（手入力・複数）", listPath, readOnly: false, star: 2);
+                var listColumn = TextColumn(column.Name + "（手入力）", listPath, readOnly: false, star: 2);
                 // 1文字ごとに書き込むと、前後の空白を取る処理で入力中の空白が消えるので、確定したときに書き込む
                 ((Binding)listColumn.Binding).UpdateSourceTrigger = UpdateSourceTrigger.LostFocus;
                 var listStyle = ManualCellStyle(listPath, toolTip: true);

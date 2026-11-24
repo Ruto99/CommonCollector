@@ -240,7 +240,7 @@
                                         Click="RemoveListItem_Click" ToolTip="この列を表から外す（入力済みの値はファイルに残ります）"/>
                                 <CheckBox DockPanel.Dock="Right" Content="複数の値" IsChecked="{Binding AllowMultiple}"
                                           Click="Setting_Changed" VerticalAlignment="Center" Margin="6,0,4,0"
-                                          ToolTip="1つのキーに複数の値を入れる列にします。値が1つならセルに直接入力し、2つ目からはセルの右端の ▾（または Alt+↓）で開く一覧に1つずつ入力します"/>
+                                          ToolTip="1つのキーに複数の値を入れられます（既定でオン）。値が1つならセルに直接入力し、2つ目からはセルの右端の ▾（または Alt+↓）で開く一覧に1つずつ入力します。外すと、1つのキーに1つの値だけの列になります"/>
                                 <TextBox Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}" LostFocus="Setting_LostFocus"
                                          ToolTip="手入力する列の名前。名前を変えると、前の名前で入力した値は表に出なくなります"/>
                             </DockPanel>
