@@ -102,27 +102,6 @@ public class TextItem : ObservableObject
     public string Value { get => _value; set => Set(ref _value, value); }
 }
 
-/// <summary>
-/// 手入力の列。XML では &lt;Column&gt;部品&lt;/Column&gt; のように保存。
-/// 複数の値を入れられないようにした列だけ &lt;Column multiple="false"&gt; になる
-/// </summary>
-public class ManualColumn : TextItem
-{
-    private bool _allowMultiple = true;
-
-    public ManualColumn() { }
-    public ManualColumn(string value) : base(value) { }
-
-    /// <summary>
-    /// 1つのキーに複数の値を入れられる列（既定で入れられる。以前の .lc の列も同じ）。
-    /// 値が1つまではセルに直接入力し、2つ目からはセルの下に開く一覧で入力する
-    /// （区切りの文字を打たないので、区切りの間違いが起きない）
-    /// </summary>
-    [XmlAttribute("multiple")]
-    public bool AllowMultiple { get => _allowMultiple; set => Set(ref _allowMultiple, value); }
-    public bool ShouldSerializeAllowMultiple() => !AllowMultiple;
-}
-
 /// <summary>データ元の列を、表のどの列に取り込むか</summary>
 public class ColumnMapping : ObservableObject
 {

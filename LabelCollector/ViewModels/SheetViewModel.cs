@@ -10,8 +10,7 @@ using LabelCollector.Services;
 namespace LabelCollector.ViewModels;
 
 /// <summary>表の列 1つ分</summary>
-/// <param name="IsMultiple">手入力の列で、1つのキーに複数の値を入れる列（値の一覧を編集する画面で入力する）</param>
-public record SheetColumn(string Name, bool IsManual, bool IsMultiple = false);
+public record SheetColumn(string Name, bool IsManual);
 
 /// <summary>
 /// シートの画面のタブ 1つ分。エクセルのデータ元なら、親のタブはデータ元のフォルダ、子のタブ（Children）は取得元のファイルごと。
@@ -37,7 +36,7 @@ public class SheetViewModel : INotifyPropertyChanged
     public ObservableCollection<SourceSettings> Sources => Data.Sources;
 
     /// <summary>手入力の列の名前</summary>
-    public ObservableCollection<ManualColumn> ManualColumns => Data.ManualColumns;
+    public ObservableCollection<TextItem> ManualColumns => Data.ManualColumns;
 
     public ICommand RefreshCommand { get; }
     public ICommand RemoveMissingCommand { get; }
@@ -83,17 +82,13 @@ public class SheetViewModel : INotifyPropertyChanged
     /// <summary>データ元・手入力の列の設定から、表の列を作り直す</summary>
     public void UpdateColumns()
     {
-        // 同じ名前の手入力の列が2つあれば1つにまとめる（どちらかが「複数の値」なら複数の値の列）
-        var manual = ManualColumns.Where(c => c.Value.Trim().Length > 0)
-                                  .GroupBy(c => c.Value.Trim())
-                                  .Select(g => new SheetColumn(g.Key, true, g.Any(c => c.AllowMultiple)))
-                                  .ToList();
-        var manualNames = manual.Select(c => c.Name).ToHashSet();
+        var manual = ManualColumns.Select(c => c.Value.Trim()).Where(n => n.Length > 0)
+                                  .Distinct().ToList();
         var auto = Sources.SelectMany(s => s.Columns).Select(m => m.TargetName)
-                          .Where(n => n.Length > 0 && !manualNames.Contains(n))
+                          .Where(n => n.Length > 0 && !manual.Contains(n))
                           .Distinct().ToList();
         var columns = auto.Select(n => new SheetColumn(n, false))
-                          .Concat(manual)
+                          .Concat(manual.Select(n => new SheetColumn(n, true)))
                           .ToList();
 
         if (!columns.SequenceEqual(Columns))
@@ -275,8 +270,7 @@ public class SheetViewModel : INotifyPropertyChanged
     {
         Name = state.Name;
 
-        if (!ManualColumns.Select(c => (c.Value, c.AllowMultiple))
-                          .SequenceEqual(state.ManualColumns.Select(c => (c.Value, c.AllowMultiple))))
+        if (!ManualColumns.Select(c => c.Value).SequenceEqual(state.ManualColumns.Select(c => c.Value)))
         {
             ManualColumns.Clear();
             foreach (var c in state.ManualColumns) ManualColumns.Add(c);

@@ -43,7 +43,7 @@ public class SheetData
     /// <summary>手入力の列の名前</summary>
     [XmlArray("ManualColumns")]
     [XmlArrayItem("Column")]
-    public ObservableCollection<ManualColumn> ManualColumns { get; set; } = new();
+    public ObservableCollection<TextItem> ManualColumns { get; set; } = new();
 
     /// <summary>
     /// データ元の一覧。種類（エクセルファイル・エクセルフォルダなど）が混ざっていてよい。
@@ -59,7 +59,7 @@ public class SheetData
 
     /// <summary>新しいシートを作る（手入力の列「メモ」付き）</summary>
     public static SheetData CreateNew(string name) =>
-        new() { Name = name, ManualColumns = { new ManualColumn(DefaultManualColumn) } };
+        new() { Name = name, ManualColumns = { new TextItem(DefaultManualColumn) } };
 
     // ---- 以前の形式（種類ごとに決まった設定を持つシート）を読むためのもの。保存はしない ----
 
@@ -108,7 +108,7 @@ public class SheetData
 
         // 以前の B列は手入力の列「B列」に移っている
         if (!ManualColumns.Any(c => c.Value == RowItem.LegacyManualColumn))
-            ManualColumns.Insert(0, new ManualColumn(RowItem.LegacyManualColumn));
+            ManualColumns.Insert(0, new TextItem(RowItem.LegacyManualColumn));
 
         LegacyType = null;
         LegacyFolderPath = null;

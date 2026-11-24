@@ -104,9 +104,10 @@ public partial class SheetView : UserControl
 
         foreach (var column in columns)
         {
-            if (column.IsMultiple)
+            if (column.IsManual)
             {
-                // 複数の値の列：値が1つまでならセルに直接入力。2つ目からは、右端の ▾（Alt+↓）でセルの下に開く一覧で入力する
+                // 手入力の列（どれも複数の値を入れられる）：値が1つまでならセルに直接入力。
+                // 2つ目からは、右端の ▾（Alt+↓）でセルの下に開く一覧で入力する
                 var listPath = "ManualList[" + EscapeIndexer(column.Name) + "]";
                 var listColumn = TextColumn(column.Name + "（手入力）", listPath, readOnly: false, star: 2);
                 // 1文字ごとに書き込むと、前後の空白を取る処理で入力中の空白が消えるので、確定したときに書き込む
@@ -119,12 +120,9 @@ public partial class SheetView : UserControl
                 continue;
             }
 
-            // 列名は "Auto[品名]" のように行の値へバインドする
-            var path = (column.IsManual ? "Manual" : "Auto") + "[" + EscapeIndexer(column.Name) + "]";
-            var header = column.IsManual ? column.Name + "（手入力）" : column.Name;
-            var textColumn = TextColumn(header, path, readOnly: !column.IsManual, star: column.IsManual ? 2 : 1.5);
-            if (column.IsManual) textColumn.CellStyle = ManualCellStyle(path);
-            grid.Columns.Add(textColumn);
+            // データ元から取り込む列は "Auto[品名]" のように行の値へバインドする（読み取り専用）
+            var path = "Auto[" + EscapeIndexer(column.Name) + "]";
+            grid.Columns.Add(TextColumn(column.Name, path, readOnly: true, star: 1.5));
         }
 
         grid.Columns.Add(TextColumn("取得元", "Origin", readOnly: true, star: 1.5));
@@ -152,7 +150,7 @@ public partial class SheetView : UserControl
     /// 手入力の列のセル：何も入力されていないときは赤い枠で囲む（入力すると消える）。
     /// 枠の太さは DataGridCell の既定（1）のままにして、色だけ変えるので、編集中も大きさは変わらない
     /// </summary>
-    /// <param name="toolTip">セルの値をツールチップにも出す（複数の値の列で、幅に収まらないとき用。空なら出さない）</param>
+    /// <param name="toolTip">セルの値をツールチップにも出す（複数の値が幅に収まらないとき用。空なら出さない）</param>
     private Style ManualCellStyle(string path, bool toolTip = false)
     {
         var style = new Style(typeof(DataGridCell), (Style)FindResource(typeof(DataGridCell)));
@@ -168,9 +166,9 @@ public partial class SheetView : UserControl
         return style;
     }
 
-    // ---- 複数の値の列：値が1つまではセルで、2つ目からはセルの下の一覧で入力する ----
+    // ---- 手入力の列：値が1つまではセルで、2つ目からはセルの下の一覧で入力する ----
 
-    /// <summary>複数の値の列 → 手入力の列名</summary>
+    /// <summary>表の手入力の列 → 手入力の列名</summary>
     private Dictionary<DataGridColumn, string> MultiValueColumns { get; } = new();
 
     // 値が2つ以上あるセルは、セルでは編集させずに一覧を開く（どの値を書き換えるのか分からないので）

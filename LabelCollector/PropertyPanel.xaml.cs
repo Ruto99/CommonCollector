@@ -97,7 +97,7 @@ public partial class PropertyPanel : UserControl
     private void AddManualColumn_Click(object sender, RoutedEventArgs e)
     {
         if (FindSheet(sender as DependencyObject) is not { } sheet) return;
-        sheet.ManualColumns.Add(new ManualColumn());
+        sheet.ManualColumns.Add(new TextItem());
         sheet.RequestSave();
     }
 

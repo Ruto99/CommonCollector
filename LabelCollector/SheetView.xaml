@@ -19,7 +19,7 @@
         <!-- 手入力の列で、まだ何も入力されていないセルの枠の色（SheetView.xaml.cs の ManualCellStyle で使う） -->
         <SolidColorBrush x:Key="EmptyManualCellBrush" Color="#E53935"/>
 
-        <!-- 「複数の値」の列のセル：右端の ▾ で、値の一覧をセルの下に開く（SheetView.xaml.cs の CreateGrid で使う） -->
+        <!-- 手入力の列のセル：右端の ▾ で、値の一覧をセルの下に開く（SheetView.xaml.cs の CreateGrid で使う） -->
         <ControlTemplate x:Key="MultiValueCellTemplate" TargetType="DataGridCell">
             <Border BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
                     Background="{TemplateBinding Background}" SnapsToDevicePixels="True">

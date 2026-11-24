@@ -7,7 +7,7 @@ using System.Windows.Media;
 namespace LabelCollector;
 
 /// <summary>
-/// 「複数の値」の手入力の列の値を、1つずつ入力する一覧。表のセルのすぐ下に開く（Open で開く）。
+/// 手入力の列に複数の値を、1つずつ入力する一覧。表のセルのすぐ下に開く（Open で開く）。
 /// 値ごとに入力欄が分かれているので、区切りの文字（，など）を打たなくてよい。
 /// ・Enter：次の行を足して移る　・空の行で Backspace：その行を消す　・↑↓：行を移る
 /// ・Ctrl+Enter・「OK」・一覧の外をクリック：確定　・Esc・「キャンセル」：取り消し
@@ -110,13 +110,13 @@ public class ValueListEditor : Border
                 var duplicates = all.GroupBy(v => v).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
                 _commit(all.Distinct().ToList(), duplicates);
             }
-            Closed?.Invoke(); // 確定・取り消しのどちらでも
+            _closed?.Invoke(); // 確定・取り消しのどちらでも
         };
         Check();
     }
 
     /// <summary>一覧が閉じた（確定・取り消しのどちらでも）</summary>
-    private new Action? Closed { get; set; }
+    private Action? _closed;
 
     /// <summary>target（表のセル）の下に一覧を開く</summary>
     /// <param name="commit">確定したときに呼ぶ（値の一覧, 重複していて1つにまとめた値）。取り消したときは呼ばない</param>
@@ -124,7 +124,7 @@ public class ValueListEditor : Border
     public static void Open(FrameworkElement target, IReadOnlyList<string> values,
                             Action<IReadOnlyList<string>, IReadOnlyList<string>> commit, Action? closed = null)
     {
-        var editor = new ValueListEditor(target, target.ActualWidth, values, commit) { Closed = closed };
+        var editor = new ValueListEditor(target, target.ActualWidth, values, commit) { _closed = closed };
         editor._popup.IsOpen = true;
     }
 

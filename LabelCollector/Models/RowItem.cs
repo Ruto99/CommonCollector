@@ -69,7 +69,7 @@ public class RowItem : ObservableObject
     public CellAccessor Manual => _manual ??= new CellAccessor(() => ManualCells);
 
     /// <summary>
-    /// 画面用：「複数の値」の手入力の列のセル。ManualList["部品"] は「A / B / C（3件）」のような文字になる。
+    /// 画面用：手入力の列のセル（どの手入力の列も複数の値を入れられる）。ManualList["部品"] は「A / B / C（3件）」のような文字になる。
     /// 値が1つ以下なら、セルに直接入力して書き換えられる。値の一覧は GetManualValues / SetManualValues で読み書きする
     /// </summary>
     [XmlIgnore]
@@ -77,7 +77,7 @@ public class RowItem : ObservableObject
     private MultiValueAccessor? _manualList;
 
     /// <summary>
-    /// 手入力の列の値の一覧（「複数の値」の列用）。値ごとに &lt;Cell column="列名"&gt; を1つずつ持つ。
+    /// 手入力の列の値の一覧。値ごとに &lt;Cell column="列名"&gt; を1つずつ持つ。
     /// 以前の1つの値も、そのまま1つ目の値として読める
     /// </summary>
     public IReadOnlyList<string> GetManualValues(string column) =>
@@ -228,7 +228,7 @@ public class CellAccessor(Func<List<CellValue>> cells) : INotifyPropertyChanged
 }
 
 /// <summary>
-/// 「複数の値」の手入力の列を、表のセルで読み書きする窓口。
+/// 手入力の列（複数の値を入れられる）を、表のセルで読み書きする窓口。
 /// 画面からは "ManualList[部品]" のように列名でバインドする
 /// </summary>
 public class MultiValueAccessor(Func<string, IReadOnlyList<string>> values,
