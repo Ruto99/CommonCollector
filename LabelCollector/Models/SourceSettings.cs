@@ -102,6 +102,25 @@ public class TextItem : ObservableObject
     public string Value { get => _value; set => Set(ref _value, value); }
 }
 
+/// <summary>
+/// 手入力の列。XML では &lt;Column multiple="true"&gt;部品&lt;/Column&gt; のように保存（multiple は「複数の値」のときだけ）
+/// </summary>
+public class ManualColumn : TextItem
+{
+    private bool _allowMultiple;
+
+    public ManualColumn() { }
+    public ManualColumn(string value) : base(value) { }
+
+    /// <summary>
+    /// 1つのキーに複数の値を入れる列。表では値の一覧を編集する画面で入力する
+    /// （区切りの文字を打たないので、区切りの間違いが起きない）
+    /// </summary>
+    [XmlAttribute("multiple")]
+    public bool AllowMultiple { get => _allowMultiple; set => Set(ref _allowMultiple, value); }
+    public bool ShouldSerializeAllowMultiple() => AllowMultiple;
+}
+
 /// <summary>データ元の列を、表のどの列に取り込むか</summary>
 public class ColumnMapping : ObservableObject
 {

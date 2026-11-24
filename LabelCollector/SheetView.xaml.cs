@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using LabelCollector.Models;
@@ -33,6 +34,7 @@ public partial class SheetView : UserControl
     private void BuildTabs()
     {
         TabsHost.Content = null;
+        MultiValueColumns.Clear();
         if (_sheet == null) return;
         TabsHost.Content = CreateTabControl(_sheet, _sheet.Tabs, parentId: "");
     }
@@ -94,12 +96,25 @@ public partial class SheetView : UserControl
             RowStyle = (Style)FindResource("RowStyle"),
         };
         grid.CellEditEnding += DataGrid_CellEditEnding;
+        grid.PreviewMouseDoubleClick += DataGrid_PreviewMouseDoubleClick;
+        grid.PreviewKeyDown += DataGrid_PreviewKeyDown;
 
         grid.Columns.Add(TextColumn("状態", "State", readOnly: true, width: 70));
         grid.Columns.Add(TextColumn("キー", "Key", readOnly: true, star: 1.5));
 
         foreach (var column in columns)
         {
+            if (column.IsMultiple)
+            {
+                // 複数の値の列：セルでは直接編集せず、値の一覧を編集する画面で入力する
+                var listPath = "ManualList[" + EscapeIndexer(column.Name) + "]";
+                var listColumn = TextColumn(column.Name + "（手入力・複数）", listPath, readOnly: true, star: 2);
+                listColumn.CellStyle = ManualCellStyle(listPath, toolTip: true);
+                MultiValueColumns[listColumn] = column.Name;
+                grid.Columns.Add(listColumn);
+                continue;
+            }
+
             // 列名は "Auto[品名]" のように行の値へバインドする
             var path = (column.IsManual ? "Manual" : "Auto") + "[" + EscapeIndexer(column.Name) + "]";
             var header = column.IsManual ? column.Name + "（手入力）" : column.Name;
@@ -133,17 +148,56 @@ public partial class SheetView : UserControl
     /// 手入力の列のセル：何も入力されていないときは赤い枠で囲む（入力すると消える）。
     /// 枠の太さは DataGridCell の既定（1）のままにして、色だけ変えるので、編集中も大きさは変わらない
     /// </summary>
-    private Style ManualCellStyle(string path)
+    /// <param name="toolTip">セルの値をツールチップにも出す（複数の値の列で、幅に収まらないとき用。空なら出さない）</param>
+    private Style ManualCellStyle(string path, bool toolTip = false)
     {
         var style = new Style(typeof(DataGridCell), (Style)FindResource(typeof(DataGridCell)));
         var brush = (Brush)FindResource("EmptyManualCellBrush");
+        if (toolTip) style.Setters.Add(new Setter(ToolTipProperty, new Binding(path)));
         foreach (var empty in new object?[] { "", null })
         {
             var trigger = new DataTrigger { Binding = new Binding(path), Value = empty };
             trigger.Setters.Add(new Setter(Control.BorderBrushProperty, brush));
+            if (toolTip) trigger.Setters.Add(new Setter(ToolTipProperty, null));
             style.Triggers.Add(trigger);
         }
         return style;
+    }
+
+    // ---- 複数の値の列：値の一覧を編集する画面 ----
+
+    /// <summary>複数の値の列 → 手入力の列名</summary>
+    private Dictionary<DataGridColumn, string> MultiValueColumns { get; } = new();
+
+    // セルをダブルクリックしたら、値の一覧の画面を開く
+    private void DataGrid_PreviewMouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        var d = e.OriginalSource as DependencyObject;
+        while (d != null && d is not DataGridCell) d = d is Visual ? VisualTreeHelper.GetParent(d) : null;
+        if (d is DataGridCell { Column: { } column, DataContext: RowItem row } && MultiValueColumns.ContainsKey(column))
+        {
+            EditValues(row, column);
+            e.Handled = true;
+        }
+    }
+
+    // F2・Enter でも開く（キーボードだけで入力できるように）
+    private void DataGrid_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key is not (Key.F2 or Key.Enter) || Keyboard.Modifiers != ModifierKeys.None) return;
+        if (sender is DataGrid { CurrentCell: { Column: { } column, Item: RowItem row } } && MultiValueColumns.ContainsKey(column))
+        {
+            EditValues(row, column);
+            e.Handled = true;
+        }
+    }
+
+    private void EditValues(RowItem row, DataGridColumn column)
+    {
+        if (Window.GetWindow(this) is not { } owner || DataContext is not SheetViewModel vm) return;
+        var name = MultiValueColumns[column];
+        var values = ValueListDialog.Show(owner, name, row.Key, row.GetManualValues(name));
+        if (values != null && row.SetManualValues(name, values)) vm.RequestSave();
     }
 
     /// <summary>バインドのパスの [ ] の中では , [ ] ^ などに ^ を付ける</summary>
