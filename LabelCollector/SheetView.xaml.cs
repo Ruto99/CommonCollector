@@ -96,7 +96,7 @@ public partial class SheetView : UserControl
             RowStyle = (Style)FindResource("RowStyle"),
         };
         grid.CellEditEnding += DataGrid_CellEditEnding;
-        grid.PreviewMouseDoubleClick += DataGrid_PreviewMouseDoubleClick;
+        grid.BeginningEdit += DataGrid_BeginningEdit;
         grid.PreviewKeyDown += DataGrid_PreviewKeyDown;
 
         grid.Columns.Add(TextColumn("状態", "State", readOnly: true, width: 70));
@@ -106,10 +106,14 @@ public partial class SheetView : UserControl
         {
             if (column.IsMultiple)
             {
-                // 複数の値の列：セルでは直接編集せず、値の一覧を編集する画面で入力する
+                // 複数の値の列：値が1つまでならセルに直接入力。2つ目からは、右端の ▾（Alt+↓）でセルの下に開く一覧で入力する
                 var listPath = "ManualList[" + EscapeIndexer(column.Name) + "]";
-                var listColumn = TextColumn(column.Name + "（手入力・複数）", listPath, readOnly: true, star: 2);
-                listColumn.CellStyle = ManualCellStyle(listPath, toolTip: true);
+                var listColumn = TextColumn(column.Name + "（手入力・複数）", listPath, readOnly: false, star: 2);
+                // 1文字ごとに書き込むと、前後の空白を取る処理で入力中の空白が消えるので、確定したときに書き込む
+                ((Binding)listColumn.Binding).UpdateSourceTrigger = UpdateSourceTrigger.LostFocus;
+                var listStyle = ManualCellStyle(listPath, toolTip: true);
+                listStyle.Setters.Add(new Setter(TemplateProperty, FindResource("MultiValueCellTemplate")));
+                listColumn.CellStyle = listStyle;
                 MultiValueColumns[listColumn] = column.Name;
                 grid.Columns.Add(listColumn);
                 continue;
@@ -164,40 +168,62 @@ public partial class SheetView : UserControl
         return style;
     }
 
-    // ---- 複数の値の列：値の一覧を編集する画面 ----
+    // ---- 複数の値の列：値が1つまではセルで、2つ目からはセルの下の一覧で入力する ----
 
     /// <summary>複数の値の列 → 手入力の列名</summary>
     private Dictionary<DataGridColumn, string> MultiValueColumns { get; } = new();
 
-    // セルをダブルクリックしたら、値の一覧の画面を開く
-    private void DataGrid_PreviewMouseDoubleClick(object sender, MouseButtonEventArgs e)
+    // 値が2つ以上あるセルは、セルでは編集させずに一覧を開く（どの値を書き換えるのか分からないので）
+    private void DataGrid_BeginningEdit(object? sender, DataGridBeginningEditEventArgs e)
     {
-        var d = e.OriginalSource as DependencyObject;
-        while (d != null && d is not DataGridCell) d = d is Visual ? VisualTreeHelper.GetParent(d) : null;
-        if (d is DataGridCell { Column: { } column, DataContext: RowItem row } && MultiValueColumns.ContainsKey(column))
-        {
-            EditValues(row, column);
-            e.Handled = true;
-        }
+        if (sender is not DataGrid grid || !MultiValueColumns.TryGetValue(e.Column, out var name)) return;
+        if (e.Row.Item is not RowItem row || row.GetManualValues(name).Count <= 1) return;
+        e.Cancel = true;
+        if (FindCell(e.Column, row) is { } cell)
+            Dispatcher.BeginInvoke(() => OpenValueList(grid, cell, row, name), DispatcherPriority.Input);
     }
 
-    // F2・Enter でも開く（キーボードだけで入力できるように）
+    // Alt+↓ で一覧を開く（エクセルのドロップダウンと同じキー）
     private void DataGrid_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key is not (Key.F2 or Key.Enter) || Keyboard.Modifiers != ModifierKeys.None) return;
-        if (sender is DataGrid { CurrentCell: { Column: { } column, Item: RowItem row } } && MultiValueColumns.ContainsKey(column))
+        if (!(e.Key == Key.System && e.SystemKey == Key.Down && Keyboard.Modifiers == ModifierKeys.Alt)) return;
+        if (sender is DataGrid { CurrentCell: { Column: { } column, Item: RowItem row } } grid
+            && MultiValueColumns.TryGetValue(column, out var name) && FindCell(column, row) is { } cell)
         {
-            EditValues(row, column);
+            OpenValueList(grid, cell, row, name);
             e.Handled = true;
         }
     }
 
-    private void EditValues(RowItem row, DataGridColumn column)
+    // セルの右端の ▾
+    private void MultiValueButton_Click(object sender, RoutedEventArgs e)
     {
-        if (Window.GetWindow(this) is not { } owner || DataContext is not SheetViewModel vm) return;
-        var name = MultiValueColumns[column];
-        var values = ValueListDialog.Show(owner, name, row.Key, row.GetManualValues(name));
-        if (values != null && row.SetManualValues(name, values)) vm.RequestSave();
+        if ((sender as FrameworkElement)?.TemplatedParent is not DataGridCell { Column: { } column, DataContext: RowItem row } cell
+            || !MultiValueColumns.TryGetValue(column, out var name)) return;
+        var grid = FindParent<DataGrid>(cell);
+        if (grid != null) OpenValueList(grid, cell, row, name);
+    }
+
+    private void OpenValueList(DataGrid grid, DataGridCell cell, RowItem row, string name)
+    {
+        if (DataContext is not SheetViewModel vm) return;
+        grid.CommitEdit(DataGridEditingUnit.Row, exitEditingMode: true); // セルで入力中の値を先に確定する
+
+        ValueListEditor.Open(cell, row.GetManualValues(name), (values, duplicates) =>
+        {
+            if (row.SetManualValues(name, values)) vm.RequestSave();
+            if (duplicates.Count > 0)
+                vm.Status = $"「{row.Key}」の「{name}」で重複していた値を1つにまとめました：{string.Join("、", duplicates)}";
+        }, closed: () => cell.Focus()); // 表に戻ってキーボードで続けられるように
+    }
+
+    private static DataGridCell? FindCell(DataGridColumn column, object item) =>
+        column.GetCellContent(item) is { } content ? FindParent<DataGridCell>(content) : null;
+
+    private static T? FindParent<T>(DependencyObject? d) where T : DependencyObject
+    {
+        while (d != null && d is not T) d = d is Visual ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d);
+        return d as T;
     }
 
     /// <summary>バインドのパスの [ ] の中では , [ ] ^ などに ^ を付ける</summary>

@@ -69,11 +69,11 @@ public class RowItem : ObservableObject
     public CellAccessor Manual => _manual ??= new CellAccessor(() => ManualCells);
 
     /// <summary>
-    /// 画面用：「複数の値」の手入力の列の表示。ManualList["部品"] は「A / B / C（3件）」のような文字になる。
-    /// 値の一覧は GetManualValues / SetManualValues で読み書きする
+    /// 画面用：「複数の値」の手入力の列のセル。ManualList["部品"] は「A / B / C（3件）」のような文字になる。
+    /// 値が1つ以下なら、セルに直接入力して書き換えられる。値の一覧は GetManualValues / SetManualValues で読み書きする
     /// </summary>
     [XmlIgnore]
-    public MultiValueAccessor ManualList => _manualList ??= new MultiValueAccessor(GetManualValues);
+    public MultiValueAccessor ManualList => _manualList ??= new MultiValueAccessor(GetManualValues, SetManualValues);
     private MultiValueAccessor? _manualList;
 
     /// <summary>
@@ -228,13 +228,27 @@ public class CellAccessor(Func<List<CellValue>> cells) : INotifyPropertyChanged
 }
 
 /// <summary>
-/// 「複数の値」の手入力の列を、表に出す文字にする窓口（読み取り専用）。
+/// 「複数の値」の手入力の列を、表のセルで読み書きする窓口。
 /// 画面からは "ManualList[部品]" のように列名でバインドする
 /// </summary>
-public class MultiValueAccessor(Func<string, IReadOnlyList<string>> values) : INotifyPropertyChanged
+public class MultiValueAccessor(Func<string, IReadOnlyList<string>> values,
+                                Func<string, IReadOnlyList<string>, bool> setValues) : INotifyPropertyChanged
 {
-    /// <summary>値が無ければ ""、1つならその値、2つ以上なら「A / B / C（3件）」</summary>
-    public string this[string column] => Format(values(column));
+    /// <summary>
+    /// 読み：値が無ければ ""、1つならその値、2つ以上なら「A / B / C（3件）」。
+    /// 書き：値が1つ以下のときだけ（セルに直接入力したとき）。空なら値なし。
+    /// 2つ以上あるときはセルでは編集させず、値の一覧で編集する
+    /// </summary>
+    public string this[string column]
+    {
+        get => Format(values(column));
+        set
+        {
+            if (values(column).Count > 1) return;
+            var v = (value ?? "").Trim();
+            setValues(column, v.Length > 0 ? [v] : []);
+        }
+    }
 
     public static string Format(IReadOnlyList<string> list) => list.Count switch
     {
