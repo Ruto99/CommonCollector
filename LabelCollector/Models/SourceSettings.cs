@@ -100,6 +100,11 @@ public class TextItem : ObservableObject
 
     [XmlText]
     public string Value { get => _value; set => Set(ref _value, value); }
+
+    /// <summary>消したり名前を変えたりできない項目（手入力の列の A列・B列）。保存はしない（読み込んだときに付け直す）</summary>
+    [XmlIgnore]
+    public bool IsFixed { get => _isFixed; set => Set(ref _isFixed, value); }
+    private bool _isFixed;
 }
 
 /// <summary>データ元の列を、表のどの列に取り込むか</summary>

@@ -34,8 +34,10 @@ public class TableData
 /// </summary>
 public class SheetData
 {
-    /// <summary>新しいシートの手入力の列の既定名</summary>
-    public const string DefaultManualColumn = "メモ";
+    /// <summary>
+    /// どのシートにも必ずある手入力の列（この順で先頭に並ぶ）。プロパティで消したり名前を変えたりはできない
+    /// </summary>
+    public static readonly IReadOnlyList<string> FixedManualColumns = ["A列", RowItem.LegacyManualColumn];
 
     [XmlAttribute("name")]
     public string Name { get; set; } = "";
@@ -57,9 +59,39 @@ public class SheetData
     [XmlArrayItem("Row")]
     public List<RowItem> Rows { get; set; } = new();
 
-    /// <summary>新しいシートを作る（手入力の列「メモ」付き）</summary>
-    public static SheetData CreateNew(string name) =>
-        new() { Name = name, ManualColumns = { new TextItem(DefaultManualColumn) } };
+    /// <summary>新しいシートを作る（手入力の列「A列」「B列」付き）</summary>
+    public static SheetData CreateNew(string name)
+    {
+        var sheet = new SheetData { Name = name };
+        sheet.EnsureFixedManualColumns();
+        return sheet;
+    }
+
+    /// <summary>
+    /// 固定の手入力の列（A列・B列）が先頭に並ぶようにし、消せない印（IsFixed）を付ける。
+    /// 無ければ足し、同じ名前の列が別の位置にあれば先頭に移す（入力済みの値は列名に結びついているのでそのまま出る）
+    /// </summary>
+    public void EnsureFixedManualColumns()
+    {
+        foreach (var c in ManualColumns) c.IsFixed = false;
+        for (int i = 0; i < FixedManualColumns.Count; i++)
+        {
+            var name = FixedManualColumns[i];
+            var item = ManualColumns.FirstOrDefault(c => c.Value.Trim() == name);
+            if (item == null)
+            {
+                item = new TextItem(name);
+                ManualColumns.Insert(i, item);
+            }
+            else
+            {
+                var at = ManualColumns.IndexOf(item);
+                if (at != i) ManualColumns.Move(at, i);
+                item.Value = name; // 前後の空白を取る
+            }
+            item.IsFixed = true;
+        }
+    }
 
     // ---- 以前の形式（種類ごとに決まった設定を持つシート）を読むためのもの。保存はしない ----
 
@@ -83,6 +115,7 @@ public class SheetData
     /// <summary>以前の形式なら、今の形式（データ元の一覧＋手入力の列）に直す</summary>
     internal void MigrateLegacy()
     {
+        EnsureFixedManualColumns(); // 以前の .lc のシートにも A列・B列を足す
         if (LegacyType == null) return;
 
         if (LegacyType == "Excel")
@@ -106,9 +139,7 @@ public class SheetData
         }
         // それ以外（以前の DB のシートなど）はデータ元なし。手入力の値は残る
 
-        // 以前の B列は手入力の列「B列」に移っている
-        if (!ManualColumns.Any(c => c.Value == RowItem.LegacyManualColumn))
-            ManualColumns.Insert(0, new TextItem(RowItem.LegacyManualColumn));
+        // 以前の B列は手入力の列「B列」に移っている（B列は固定の手入力の列なので、上で足してある）
 
         LegacyType = null;
         LegacyFolderPath = null;

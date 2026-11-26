@@ -236,10 +236,32 @@
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <DockPanel>
-                                <Button DockPanel.Dock="Right" Style="{StaticResource RemoveButton}"
-                                        Click="RemoveListItem_Click" ToolTip="この列を表から外す（入力済みの値はファイルに残ります）"/>
-                                <TextBox Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}" LostFocus="Setting_LostFocus"
-                                         ToolTip="手入力する列の名前。名前を変えると、前の名前で入力した値は表に出なくなります"/>
+                                <!-- A列・B列（IsFixed）は消せない・名前を変えられない -->
+                                <Button DockPanel.Dock="Right" Click="RemoveListItem_Click" ToolTip="この列を表から外す（入力済みの値はファイルに残ります）">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource RemoveButton}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsFixed}" Value="True">
+                                                    <Setter Property="Visibility" Value="Hidden"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                                <TextBox Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}" LostFocus="Setting_LostFocus">
+                                    <TextBox.Style>
+                                        <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                                            <Setter Property="ToolTip" Value="手入力する列の名前。名前を変えると、前の名前で入力した値は表に出なくなります"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsFixed}" Value="True">
+                                                    <Setter Property="IsReadOnly" Value="True"/>
+                                                    <Setter Property="Foreground" Value="Gray"/>
+                                                    <Setter Property="ToolTip" Value="どのシートにもある手入力の列です。消したり名前を変えたりはできません"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBox.Style>
+                                </TextBox>
                             </DockPanel>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>

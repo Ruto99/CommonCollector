@@ -47,6 +47,7 @@ public partial class PropertyPanel : UserControl
     private void RemoveListItem_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement element) return;
+        if (element.DataContext is TextItem { IsFixed: true }) return; // A列・B列は消せない
         var sheet = FindSheet(element); // 削除すると画面から外れるので、先に探しておく
 
         DependencyObject? d = element;

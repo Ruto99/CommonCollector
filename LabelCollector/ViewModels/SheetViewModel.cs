@@ -275,6 +275,7 @@ public class SheetViewModel : INotifyPropertyChanged
             ManualColumns.Clear();
             foreach (var c in state.ManualColumns) ManualColumns.Add(c);
         }
+        Data.EnsureFixedManualColumns(); // 履歴から読んだ列には、消せない印が付いていないので付け直す
 
         if (LcFileStore.SourcesXml(Sources) != LcFileStore.SourcesXml(state.Sources))
         {
