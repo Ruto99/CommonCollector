@@ -99,47 +99,6 @@ public class RowItem : ObservableObject
         return true;
     }
 
-    // ---- 備考：画面で入力する、自動でも手入力の列でもない値。複数の値を入れられる ----
-
-    /// <summary>備考の値の一覧（保存用）。&lt;Notes&gt;&lt;Note&gt;値&lt;/Note&gt;…&lt;/Notes&gt; で保存する</summary>
-    [XmlArray("Notes")]
-    [XmlArrayItem("Note")]
-    public List<string> Notes { get; set; } = new();
-
-    /// <summary>
-    /// 画面用：備考のセル。値が無ければ ""、1つならその値、2つ以上なら「A / B（2件）」。
-    /// 値が1つ以下なら、セルに直接入力して書き換えられる（2つ以上あるときは値の一覧で編集する）
-    /// </summary>
-    [XmlIgnore]
-    public string NoteText
-    {
-        get => MultiValueAccessor.Format(Notes);
-        set
-        {
-            if (Notes.Count > 1) return;
-            var v = (value ?? "").Trim();
-            SetNotes(v.Length > 0 ? [v] : []);
-        }
-    }
-
-    /// <summary>備考の値の一覧を入れ替える（空の値は除く）。変わったら true</summary>
-    public bool SetNotes(IReadOnlyList<string> values)
-    {
-        var list = values.Where(v => v.Length > 0).ToList();
-        if (Notes.SequenceEqual(list)) return false;
-        Notes = list;
-        OnPropertyChanged(nameof(NoteText));
-        return true;
-    }
-
-    /// <summary>以前の1つだけの備考（&lt;Note&gt;値&lt;/Note&gt;）。読み込んだら備考の1つ目の値にする。保存はしない</summary>
-    [XmlElement("Note")]
-    public string? LegacyNote
-    {
-        get => null;
-        set { if (!string.IsNullOrEmpty(value) && !Notes.Contains(value)) Notes.Insert(0, value); }
-    }
-
     /// <summary>自動の列の値をまとめて入れ替える。変わったら true</summary>
     public bool SetAutoValues(IReadOnlyDictionary<string, string> values)
     {
@@ -174,7 +133,6 @@ public class RowItem : ObservableObject
             Manual.NotifyAllChanged();
             ManualList.NotifyAllChanged();
         }
-        SetNotes(other.Notes);
     }
 
     private static bool SameCells(List<CellValue> a, List<CellValue> b) =>
