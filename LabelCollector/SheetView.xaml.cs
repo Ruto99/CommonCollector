@@ -83,7 +83,7 @@ public partial class SheetView : UserControl
     }
 
     /// <summary>
-    /// 表を作る：状態・キー → データ元から取り込む列（読み取り専用）→ 手入力の列（編集できる）→ 取得元・最終確認
+    /// 表を作る：状態・キー → データ元から取り込む列（読み取り専用）→ 手入力の列（編集できる）→ 備考（編集できる）→ 取得元・最終確認
     /// </summary>
     private DataGrid CreateGrid(IReadOnlyList<SheetColumn> columns, ListCollectionView rows)
     {
@@ -115,7 +115,8 @@ public partial class SheetView : UserControl
                 var listStyle = ManualCellStyle(listPath, toolTip: true);
                 listStyle.Setters.Add(new Setter(TemplateProperty, FindResource("MultiValueCellTemplate")));
                 listColumn.CellStyle = listStyle;
-                MultiValueColumns[listColumn] = column.Name;
+                var name = column.Name;
+                MultiValueColumns[listColumn] = new MultiValueField(name, r => r.GetManualValues(name), (r, v) => r.SetManualValues(name, v));
                 grid.Columns.Add(listColumn);
                 continue;
             }
@@ -124,6 +125,15 @@ public partial class SheetView : UserControl
             var path = "Auto[" + EscapeIndexer(column.Name) + "]";
             grid.Columns.Add(TextColumn(column.Name, path, readOnly: true, star: 1.5));
         }
+
+        // 備考：画面で入力する。手入力の列と同じく、値が1つまではセルに直接、2つ目からは ▾ の一覧で入力する
+        var noteColumn = TextColumn("備考", nameof(RowItem.NoteText), readOnly: false, star: 2);
+        ((Binding)noteColumn.Binding).UpdateSourceTrigger = UpdateSourceTrigger.LostFocus;
+        var noteStyle = ManualCellStyle(nameof(RowItem.NoteText), toolTip: true, markEmpty: false);
+        noteStyle.Setters.Add(new Setter(TemplateProperty, FindResource("MultiValueCellTemplate")));
+        noteColumn.CellStyle = noteStyle;
+        MultiValueColumns[noteColumn] = new MultiValueField("備考", r => r.Notes, (r, v) => r.SetNotes(v));
+        grid.Columns.Add(noteColumn);
 
         grid.Columns.Add(TextColumn("取得元", "Origin", readOnly: true, star: 1.5));
         var lastSeen = TextColumn("最終確認", "LastSeen", readOnly: true, width: 130);
@@ -151,7 +161,8 @@ public partial class SheetView : UserControl
     /// 枠の太さは DataGridCell の既定（1）のままにして、色だけ変えるので、編集中も大きさは変わらない
     /// </summary>
     /// <param name="toolTip">セルの値をツールチップにも出す（複数の値が幅に収まらないとき用。空なら出さない）</param>
-    private Style ManualCellStyle(string path, bool toolTip = false)
+    /// <param name="markEmpty">空のセルを赤い枠で囲む（備考のように、入力しなくてもよい値では false）</param>
+    private Style ManualCellStyle(string path, bool toolTip = false, bool markEmpty = true)
     {
         var style = new Style(typeof(DataGridCell), (Style)FindResource(typeof(DataGridCell)));
         var brush = (Brush)FindResource("EmptyManualCellBrush");
@@ -159,26 +170,30 @@ public partial class SheetView : UserControl
         foreach (var empty in new object?[] { "", null })
         {
             var trigger = new DataTrigger { Binding = new Binding(path), Value = empty };
-            trigger.Setters.Add(new Setter(Control.BorderBrushProperty, brush));
+            if (markEmpty) trigger.Setters.Add(new Setter(Control.BorderBrushProperty, brush));
             if (toolTip) trigger.Setters.Add(new Setter(ToolTipProperty, null));
             style.Triggers.Add(trigger);
         }
         return style;
     }
 
-    // ---- 手入力の列：値が1つまではセルで、2つ目からはセルの下の一覧で入力する ----
+    // ---- 複数の値を入れられる列（手入力の列・備考）：値が1つまではセルで、2つ目からはセルの下の一覧で入力する ----
 
-    /// <summary>表の手入力の列 → 手入力の列名</summary>
-    private Dictionary<DataGridColumn, string> MultiValueColumns { get; } = new();
+    /// <summary>複数の値を入れられる列の、名前（メッセージ用）と値の読み書き</summary>
+    private record MultiValueField(string Name, Func<RowItem, IReadOnlyList<string>> Get,
+                                   Func<RowItem, IReadOnlyList<string>, bool> Set);
+
+    /// <summary>表の列 → その列の値の読み書き</summary>
+    private Dictionary<DataGridColumn, MultiValueField> MultiValueColumns { get; } = new();
 
     // 値が2つ以上あるセルは、セルでは編集させずに一覧を開く（どの値を書き換えるのか分からないので）
     private void DataGrid_BeginningEdit(object? sender, DataGridBeginningEditEventArgs e)
     {
-        if (sender is not DataGrid grid || !MultiValueColumns.TryGetValue(e.Column, out var name)) return;
-        if (e.Row.Item is not RowItem row || row.GetManualValues(name).Count <= 1) return;
+        if (sender is not DataGrid grid || !MultiValueColumns.TryGetValue(e.Column, out var field)) return;
+        if (e.Row.Item is not RowItem row || field.Get(row).Count <= 1) return;
         e.Cancel = true;
         if (FindCell(e.Column, row) is { } cell)
-            Dispatcher.BeginInvoke(() => OpenValueList(grid, cell, row, name), DispatcherPriority.Input);
+            Dispatcher.BeginInvoke(() => OpenValueList(grid, cell, row, field), DispatcherPriority.Input);
     }
 
     // Alt+↓ で一覧を開く（エクセルのドロップダウンと同じキー）
@@ -186,9 +201,9 @@ public partial class SheetView : UserControl
     {
         if (!(e.Key == Key.System && e.SystemKey == Key.Down && Keyboard.Modifiers == ModifierKeys.Alt)) return;
         if (sender is DataGrid { CurrentCell: { Column: { } column, Item: RowItem row } } grid
-            && MultiValueColumns.TryGetValue(column, out var name) && FindCell(column, row) is { } cell)
+            && MultiValueColumns.TryGetValue(column, out var field) && FindCell(column, row) is { } cell)
         {
-            OpenValueList(grid, cell, row, name);
+            OpenValueList(grid, cell, row, field);
             e.Handled = true;
         }
     }
@@ -197,21 +212,21 @@ public partial class SheetView : UserControl
     private void MultiValueButton_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.TemplatedParent is not DataGridCell { Column: { } column, DataContext: RowItem row } cell
-            || !MultiValueColumns.TryGetValue(column, out var name)) return;
+            || !MultiValueColumns.TryGetValue(column, out var field)) return;
         var grid = FindParent<DataGrid>(cell);
-        if (grid != null) OpenValueList(grid, cell, row, name);
+        if (grid != null) OpenValueList(grid, cell, row, field);
     }
 
-    private void OpenValueList(DataGrid grid, DataGridCell cell, RowItem row, string name)
+    private void OpenValueList(DataGrid grid, DataGridCell cell, RowItem row, MultiValueField field)
     {
         if (DataContext is not SheetViewModel vm) return;
         grid.CommitEdit(DataGridEditingUnit.Row, exitEditingMode: true); // セルで入力中の値を先に確定する
 
-        ValueListEditor.Open(cell, row.GetManualValues(name), (values, duplicates) =>
+        ValueListEditor.Open(cell, field.Get(row), (values, duplicates) =>
         {
-            if (row.SetManualValues(name, values)) vm.RequestSave();
+            if (field.Set(row, values)) vm.RequestSave();
             if (duplicates.Count > 0)
-                vm.Status = $"「{row.Key}」の「{name}」で重複していた値を1つにまとめました：{string.Join("、", duplicates)}";
+                vm.Status = $"「{row.Key}」の「{field.Name}」で重複していた値を1つにまとめました：{string.Join("、", duplicates)}";
         }, closed: () => cell.Focus()); // 表に戻ってキーボードで続けられるように
     }
 
